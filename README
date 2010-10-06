@@ -1,0 +1,63 @@
+Joot is a utility that manages disk images and chroots to provide you with 
+quick clean room environments for development, testing and package management.
+
+Goals
+-----
+  * fast (subsecond) to create and destroy
+  * only limitation on number of joots is disk space
+  * use COW and sparse disks when possible
+  * few dependencies (fast and easy installs)
+  * support debian/redhat base os install out of the box
+  * support AMIs (Amazon ec2), and VMDK (VMware) images
+  * manage system files inside chroot (such as /etc/resolv.conf and /proc/*) 
+    when reasonable
+
+Status
+------
+This project is currently under development and not yet usable. 
+
+Prereqs
+-------
+On Debian, you'll need to install these packages:
+sudo apt-get install nbd-client qemu-kvm libyaml-tiny-perl liblog-log4perl-perl perl-modules -y
+TODO: what packages provide sudo, mount, tar and ext3?
+
+linux kernel 2.6.26 for nbd support (ubuntu release intrepid ibex or later)
+sudo modprobe nbd # we can safely run this even if it's already loaded
+
+Creating Images
+-------------
+CentOS:
+http://geek.co.il/wp/2010/03/14/how-to-build-a-chroot-jail-environment-for-centos
+
+Ubuntu/Debian:
+mkdir /tmp/lucid
+debootstrap --variant=buildd --arch i386 lucid \
+     /tmp/lucid http://archive.ubuntu.com/ubuntu/
+sudo chroot /tmp/lucid apt-get clean
+cd /tmp/lucid
+tar cf /tmp/lucid.tar *
+rm -rf /tmp/lucid
+
+Eventually I hope to publish a collection of images a la stacklet.com (but 
+without the paywall).
+
+Notes
+-----
+Joot will look for a config options in ~/.joot or /etc/joot.cfg in that order. 
+
+License
+-------
+Copyright 2010 Jay Buffington
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this software except in compliance with the License.
+You may obtain a copy of the License at
+
+ http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
