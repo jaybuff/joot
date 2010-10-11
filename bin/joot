@@ -4,62 +4,80 @@ use strict;
 use warnings;
 
 use Joot;
+use Joot::Util 'bin';
 use Getopt::Long;
+use Log::Log4perl ':easy';
 
 my $VERSION = "0.0.1";
 
+my $orig_argv = [@ARGV];
+
 Getopt::Long::Configure(qw(auto_abbrev pass_through));
+
 # collect global variables
 my %options;
-GetOptions( 
-    \%options,
-    "version" => sub { print "$0 version $VERSION\n"; exit },
-    "verbose",
-    "config_file=s"
+GetOptions(
+	\%options,
+	"version" => sub { print "$0 version $VERSION\n"; exit; },
+	"verbose" => sub { Log::Log4perl->easy_init( $DEBUG ); },
 );
+
+if ( !Log::Log4perl->initialized() ) {
+    Log::Log4perl->easy_init( $INFO );
+}
+
 
 # action must be exactly one of these
 Getopt::Long::Configure('no_pass_through');
 my %action;
-GetOptions( \%action, 
-    "create",
-    "images",
-    "list",
-    "delete",
-    "rename",
-);
+GetOptions( \%action, "create", "images", "list", "delete", "rename", ) or die "\n";
 
-
-my $joot = Joot->new( \%options );
-if ( keys %action == 0 ) { 
-    die usage( "Invalid or missing command" ) if ( @ARGV != 1 );
-    $joot->chroot( $ARGV[0] );
-    exit;
-} elsif ( keys %action != 1 ) {
-    die usage( "You can't use commands \"". join(" ", keys %action) . "\" at the same time" );
+my $joot = Joot->new();
+if ( keys %action == 0 ) {
+	$action{chroot} = 1;
+	die usage("Invalid or missing command") if ( @ARGV != 1 );
+}
+elsif ( keys %action != 1 ) {
+	die usage( "You can't use commands \"" . join( " ", keys %action ) . "\" at the same time" );
 }
 
-my $action = (keys %action)[0];
-my $ret = $joot->$action( @ARGV );
+my $action = ( keys %action )[0];
+
+# images and list command don't require root priviliges
+if ( $action ne "images" && $action ne "list" ) {
+	sudo($orig_argv);
+}
+
+my $ret = $joot->$action(@ARGV);
 
 #TODO
 use Data::Dumper;
 print Dumper $ret;
 
+sub sudo {
+	my $argv = shift;
+
+	# escalate priviliges to root, unless the user is already root
+	if ( $< != 0 ) {
+		my @cmd = ( bin("sudo"), "-E", $0, @{$argv} );
+		DEBUG "running " . join " ", @cmd;
+		exec(@cmd);
+	}
+}
+
 sub usage {
-    my $message = join( "\n", @_ );
-    $message .= "\n" if $message;
-    return <<EOM
+	my $message = join( "\n", @_ );
+	$message .= "\n" if $message;
+	return <<EOM
 ${message}Usage: 
     $0 <joot name> 
     $0 --create <name> <image>
-    $0 --images <source urls>
+    $0 --images 
     $0 --list 
     $0 --delete <image>
     $0 --rename <old name> <new name>
 
 Global options:
-    --config <config file>
     --verbose 
     --version
 

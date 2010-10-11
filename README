@@ -19,7 +19,8 @@ This project is currently under development and not yet usable.
 Prereqs
 -------
 On Debian, you'll need to install these packages:
-sudo apt-get install nbd-client qemu-kvm libyaml-tiny-perl liblog-log4perl-perl perl-modules -y
+export DEBIAN_FRONTEND=noninteractive
+sudo apt-get install nbd-client qemu-kvm libjson-perl liblog-log4perl-perl perl-modules -y
 TODO: what packages provide sudo, mount, tar and ext3?
 
 linux kernel 2.6.26 for nbd support (ubuntu release intrepid ibex or later)
@@ -31,20 +32,29 @@ CentOS:
 http://geek.co.il/wp/2010/03/14/how-to-build-a-chroot-jail-environment-for-centos
 
 Ubuntu/Debian:
-mkdir /tmp/lucid
+export image_name=debian-5.0-i386-`date +%Y%m%d`
+export image=/tmp/$image_name.qcow2
+sudo su  
+qemu-img create -f qcow2 $image 10G
+qemu-nbd --connect /dev/nbd0 --socket /tmp/$image_name.sock $image
+mkfs.ext3 -b 4096 /dev/nbd0 
+mkdir -p /mnt/$image_name/
+mount /dev/nbd0 /mnt/$image_name/
+apt-get install debootstrap
 debootstrap --variant=buildd --arch i386 lucid \
-     /tmp/lucid http://archive.ubuntu.com/ubuntu/
-sudo chroot /tmp/lucid apt-get clean
-cd /tmp/lucid
-tar cf /tmp/lucid.tar *
-rm -rf /tmp/lucid
+    /mnt/$image_name/ http://archive.ubuntu.com/ubuntu/
+chroot /mnt/$image_name apt-get clean
+umount /dev/nbd0
+qemu-nbd --disconnect /dev/nbd0
+rmdir /mnt/$image_name
 
 Eventually I hope to publish a collection of images a la stacklet.com (but 
 without the paywall).
 
 Notes
 -----
-Joot will look for a config options in ~/.joot or /etc/joot.cfg in that order. 
+Joot will look for a config options in JOOT_CONFIG env var, ~/.joot or 
+/etc/joot.cfg in that order. 
 
 License
 -------
