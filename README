@@ -20,14 +20,15 @@ Prereqs
 -------
 On Debian, you'll need to install these packages:
 export DEBIAN_FRONTEND=noninteractive
-sudo apt-get install nbd-client qemu-kvm libjson-perl liblog-log4perl-perl perl-modules -y
-TODO: what packages provide sudo, mount, tar and ext3?
+sudo apt-get install mount sudo nbd-client qemu-kvm libjson-perl liblog-log4perl-perl perl-modules -y
+# for development only 
+sudo apt-get install libtest-perl-critic-perl libtest-exception-perl libtest-pod-perl -y
 
 linux kernel 2.6.26 for nbd support (ubuntu release intrepid ibex or later)
 sudo modprobe nbd # we can safely run this even if it's already loaded
 
 Creating Images
--------------
+---------------
 CentOS:
 http://geek.co.il/wp/2010/03/14/how-to-build-a-chroot-jail-environment-for-centos
 
