@@ -50,7 +50,7 @@ sub chroot {    ## no critic qw(Subroutines::ProhibitBuiltinHomonyms)
     mkpath($mnt);
 
     #TODO choose a partition rather than just p1 (from an image config file?)
-    run( bin("mount"), "/dev/${device}p1", $mnt );
+    run( bin("mount"), "${device}p1", $mnt );
     chroot($mnt);
 
     # start the user's shell inside this chroot
