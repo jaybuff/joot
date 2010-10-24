@@ -18,7 +18,7 @@ Getopt::Long::Configure(qw(auto_abbrev pass_through));
 my $verbose = 0;
 Getopt::Long::GetOptions(
     "version" => sub { print "$0 version $VERSION\n"; exit; },
-    "verbose|v" => $verbose,
+    "verbose|v" => \$verbose,
     "help|h|?"  => sub { print usage(); exit(0); },
 ) or die "\n";
 
