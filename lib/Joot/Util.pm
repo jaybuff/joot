@@ -6,10 +6,9 @@ use warnings;
 our ( @EXPORT_OK, %EXPORT_TAGS );
 
 use base 'Exporter';
-@EXPORT_OK = qw( config nbd_connect bin run slurp get_ua get_url mkpath rmpath );
+@EXPORT_OK = qw( config nbd_connect nbd_disconnect bin run slurp get_ua get_url mkpath rmpath );
 %EXPORT_TAGS = ( standard => \@EXPORT_OK );
 
-use Carp 'croak';
 use File::Path ();
 use IPC::Cmd   ();
 use JSON       ();
@@ -42,7 +41,7 @@ use LWP::UserAgent ();
                 }
             }
             if ( !$config_file ) {
-                croak "couldn't find valid config file\n";
+                die "couldn't find valid config file\n";
             }
             DEBUG( "Reading config file " . $config_file );
             $config = JSON::from_json( slurp($config_file), { relaxed => 1 } );
@@ -58,7 +57,7 @@ use LWP::UserAgent ();
                 return $default;
             }
             else {
-                croak "Config file is missing required setting \"$field\"\n";
+                die "Config file is missing required setting \"$field\"\n";
             }
         }
 
@@ -72,6 +71,12 @@ sub get_ua {
     $ua->env_proxy();    # respect HTTP_PROXY env vars
 
     return $ua;
+}
+
+sub nbd_disconnect {
+    my $device = shift;
+    run( bin("qemu-nbd"), "--disconnect", $device );
+    return;
 }
 
 # attach the qcow image to a device
@@ -88,11 +93,18 @@ sub nbd_connect {
     # TODO make device name configurable instead of assuming nbd
     my @nbd_sys_dirs = glob("/sys/block/nbd*");
     if ( !@nbd_sys_dirs ) {
-        croak "Couldn't find any nbd devices in /sys/block.  Try \"sudo modprobe nbd\"\n";
+        die "Couldn't find any nbd devices in /sys/block.  Try \"sudo modprobe nbd\"\n";
     }
 
+    # custom sort because /sys/block/nbd9 should come before /sys/block/nbd10
+    my $nbd_sort = sub {
+        my ($l) = $a =~ /(\d+)/x or return $a cmp $b;
+        my ($r) = $b =~ /(\d+)/x or return $a cmp $b;
+        $l <=> $r;
+    };
+
     my $device;
-    foreach my $dir (@nbd_sys_dirs) {
+    foreach my $dir ( sort $nbd_sort @nbd_sys_dirs ) {
         if ( !-e "$dir/pid" ) {
             if ( $dir =~ m#^/sys/block/(nbd\d+)#x ) {
                 $device = $1;
@@ -102,6 +114,7 @@ sub nbd_connect {
     }
 
     my $sock_dir = config("sockets_dir");
+    $sock_dir =~ s#/*$##x;    # remove trailing slashes
     if ( !-d $sock_dir ) {
         run( bin("mkdir"), "-p", $sock_dir );
     }
@@ -133,7 +146,7 @@ sub bin {
         }
     }
 
-    croak "couldn't find $prog in " . join( ":", @paths );
+    die "couldn't find $prog in " . join( ":", @paths ) . "\n";
 }
 
 sub run {
@@ -173,7 +186,7 @@ sub get_url {
     my $response = $ua->get($url);
 
     if ( !$response->is_success ) {
-        croak $response->status_line;
+        die $response->status_line() . "\n";
     }
 
     return $response->decoded_content();

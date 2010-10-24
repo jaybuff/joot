@@ -1,4 +1,4 @@
-#!/usr/bin/perl
+#!/usr/bin/perl 
 
 use strict;
 use warnings;
@@ -15,32 +15,35 @@ my $orig_argv = [@ARGV];
 Getopt::Long::Configure(qw(auto_abbrev pass_through));
 
 # collect global variables
-my %options;
+my $verbose = 0;
 Getopt::Long::GetOptions(
-    \%options,
     "version" => sub { print "$0 version $VERSION\n"; exit; },
-    "verbose|v" => sub { Log::Log4perl->easy_init($DEBUG); },
+    "verbose|v" => $verbose,
     "help|h|?"  => sub { print usage(); exit(0); },
 ) or die "\n";
 
-if ( !Log::Log4perl->initialized() ) {
-    Log::Log4perl->easy_init($INFO);
-}
+my $level = $verbose ? "DEBUG" : "INFO";
+my $conf = <<"EOC";
+    log4perl.rootLogger             = $level, Screen
+    log4perl.appender.Screen        = Log::Log4perl::Appender::Screen
+    log4perl.appender.Screen.layout = Log::Log4perl::Layout::PatternLayout
+    log4perl.appender.Screen.layout.ConversionPattern = %m%n
+EOC
+Log::Log4perl::init( \$conf );
 
 # action must be exactly one of these
 Getopt::Long::Configure('no_pass_through');
 my %action;
 Getopt::Long::GetOptions( \%action, "create", "images", "list", "delete", "rename" ) or die "\n";
 
-my $joot = Joot->new();
 if ( keys %action == 0 ) {
     $action{chroot} = 1;
     if ( @ARGV != 1 ) {
-        die usage("Invalid or missing command");
+        die usage("Invalid or missing command") . "\n";
     }
 }
 elsif ( keys %action != 1 ) {
-    die usage( "You can't use commands \"" . join( " ", keys %action ) . "\" at the same time" );
+    die usage( "You can't use commands \"" . join( " ", keys %action ) . "\" at the same time" ) . "\n";
 }
 
 my $action = ( keys %action )[0];
@@ -50,11 +53,47 @@ if ( $action ne "images" && $action ne "list" ) {
     sudo($orig_argv);
 }
 
-my $ret = $joot->$action(@ARGV);
+my $ret;
+eval {
+    my $joot = Joot->new();
+    $ret = $joot->$action(@ARGV);
+    1;
+} or do {
+    FATAL $@;
+    FATAL "$0 version $VERSION";
+    exit(1);
+};
 
-#TODO
-use Data::Dumper;
-print Dumper $ret;
+# format the responses for list and images actions
+if ( $action eq "list" ) {
+
+    foreach my $name ( keys %$ret ) {
+        my $joot        = $ret->{$name};
+        my $image_name  = Joot::Image->new( $joot->{image} )->name();
+        my $create_date = localtime( $joot->{ctime} );
+
+        # bar jaybuff 1287188379 debian-5.0-i386-20101008
+        my $len = max_len( keys %$ret );
+        printf( "%${len}s %s [%s] %s\n", $name, $joot->{creator}, $create_date, $image_name );
+    }
+}
+elsif ( $action eq "images" ) {
+    foreach my $name ( keys %$ret ) {
+        my $image = $ret->{$name};
+        my $len = max_len( keys %$ret );
+        printf( "%${len}s%s %s\n", $name, $image->cached() ? "*" : " ", $image->url() );
+    }
+}
+
+sub max_len { ## no critic qw(Subroutines::RequireArgUnpacking)
+    # length of the longest string 
+    my $len = 0;
+    foreach ( @_ ) {
+        my $l = length($_) + 2;
+        $len = $l if $l > $len;
+    } 
+    return $len;
+}
 
 sub sudo {
     my $argv = shift;
@@ -67,10 +106,10 @@ sub sudo {
     }
 }
 
-sub usage {
+sub usage {  ## no critic qw(Subroutines::RequireArgUnpacking)
     my $message = join( "\n", @_ );
     $message .= "\n" if $message;
-    return <<EOM
+    return <<"EOM";
 ${message}Usage: 
     $0 <joot name> 
     $0 --create <name> <image>
@@ -83,7 +122,5 @@ Global options:
     --verbose 
     --version
     --help
-
 EOM
-
 }

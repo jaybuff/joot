@@ -6,7 +6,6 @@ use warnings;
 use vars '$VERSION';
 $VERSION = "0.0.1";
 
-use Carp 'croak';
 use File::Copy  ();
 use IPC::Cmd    ();
 use Joot::Image ();
@@ -39,26 +38,28 @@ sub new {
 
 sub chroot {    ## no critic qw(Subroutines::ProhibitBuiltinHomonyms)
     my $self = shift;
-    my $joot_name = shift || croak "missing joot name to chroot into\n";
+    my $joot_name = shift || die "missing joot name to chroot into\n";
 
     my $joot_dir = $self->joot_dir($joot_name);
 
-    #TODO check to see if it's already connected?
+    #TODO check to see if it's already connected
     my $device = nbd_connect("$joot_dir/disk.qcow2");
 
     my $mnt = "$joot_dir/mnt";
     mkpath($mnt);
 
-    #TODO choose a partition rather than just p1 (from an image config file?)
-    run( bin("mount"), "${device}p1", $mnt );
-    chroot($mnt);
+    #TODO some images have partitions (mount ${device}p1 etc)
+    run( bin("mount"), $device, $mnt );
 
     # start the user's shell inside this chroot
-    # TODO is $shell tainted?
     my $shell = (getpwent)[8];
-    exec $shell;
+    system( bin("chroot"), $mnt, $shell );
 
-    #XXX when do we unmount/disconnect this thing?
+    # when the user exits the joot unmount and disconnect it
+    run( bin("umount"), $mnt );
+    nbd_disconnect($device);
+
+    return;
 }
 
 sub joot_dir {
@@ -74,25 +75,25 @@ sub get_image {
 
     my $images = $self->images();
     if ( !exists $images->{$image_name} ) {
-        croak "\"$image_name\" is an invalid image name\n";
+        die "\"$image_name\" is an invalid image name\n";
     }
     return $images->{$image_name};
 }
 
 sub create {
     my $self       = shift;
-    my $joot_name  = shift or croak "missing joot name to create\n";
+    my $joot_name  = shift or die "missing joot name to create\n";
     my $image_name = shift;
 
     my $joot_dir = $self->joot_dir($joot_name);
     if ( -e $joot_dir ) {
-        croak "$joot_name already exists.\n";
+        die "$joot_name already exists.\n";
     }
     mkpath($joot_dir);
 
     #TODO default image (from config?  or uname?)
     if ( !$image_name ) {
-        croak "missing image name for create";
+        die "missing image name for create\n";
     }
 
     my $image = $self->get_image($image_name);
@@ -111,10 +112,11 @@ sub create {
     };
 
     my $conf_file = "$joot_dir/config.js";
-    open my $conf_fh, '>', $conf_file or croak "Failed to write to $conf_file: $!\n";
+    open my $conf_fh, '>', $conf_file or die "Failed to write to $conf_file: $!\n";
     print $conf_fh JSON::to_json($conf);
     close $conf_fh;
-    return;
+
+    return 1;
 }
 
 sub images {
@@ -144,7 +146,7 @@ sub images {
         } or do {
             WARN "Failed getting images from $url";
             DEBUG $@;
-        }
+          }
     }
 
     return $images;
@@ -155,7 +157,7 @@ sub list {
 
     my $joots    = {};
     my $joot_dir = $self->joot_dir();
-    opendir( my $dh, $joot_dir ) or croak "can't read directory $joot_dir: $!";
+    opendir( my $dh, $joot_dir ) or die "can't read directory $joot_dir: $!\n";
     while ( my $joot = readdir($dh) ) {
         my $conf = "$joot_dir/$joot/config.js";
         if ( !-e $conf ) {
@@ -168,11 +170,22 @@ sub list {
     return $joots;
 }
 
-sub delete {    ## no critic qw(Subroutines::ProhibitBuiltinHomonyms)
-    my $self = shift;
-    my $joot_name = shift || die "missing joot name to delete\n";
+sub delete {    ## no critic qw(Subroutines::ProhibitBuiltinHomonyms Subroutines::RequireArgUnpacking)
+    my $self  = shift;
+    my @joots = @_;
+    if ( !@joots ) {
+        die "missing joot name to delete\n";
+    }
 
-    rmpath( $self->joot_dir($joot_name) );
+    foreach my $joot_name (@joots) {
+        my $joot_dir = $self->joot_dir($joot_name);
+        if ( !-d $joot_dir ) {
+            WARN "$joot_name doesn't exist";
+            next;
+        }
+
+        rmpath($joot_dir);
+    }
     return;
 }
 
@@ -183,6 +196,17 @@ sub rename {    ## no critic qw(Subroutines::ProhibitBuiltinHomonyms)
 
     my $old = $self->joot_dir($old_name);
     my $new = $self->joot_dir($new_name);
+
+    if ( -d $new ) {
+        FATAL "Can't rename $new to $old because joot named $old already exists";
+        return;
+    }
+
+    if ( !-d $old ) {
+        FATAL "$old doesn't exist";
+        return;
+    }
+
     File::Copy::move( $old, $new );
     return;
 }
