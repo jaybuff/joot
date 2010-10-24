@@ -1,0 +1,2 @@
+turn on perl taint mode 
+disallow creating a joot inside a joot (causes problems with mount points, sockets, etc)
