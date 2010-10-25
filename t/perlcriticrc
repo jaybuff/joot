@@ -1,1 +1,4 @@
 severity = 3
+
+[Variables::RequireLocalizedPunctuationVars]
+severity = 2
