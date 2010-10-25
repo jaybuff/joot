@@ -14,7 +14,8 @@ Goals
 
 Status
 ------
-This project is currently under development and not yet usable. 
+This project is considered alpha.  I'd love to hear your feedback if you want
+try it out.  
 
 Prereqs
 -------
@@ -52,8 +53,8 @@ rmdir /mnt/$image_name
 Eventually I hope to publish a collection of images a la stacklet.com (but 
 without the paywall).
 
-Notes
------
+Configuration
+-------------
 Joot will look for a config options in JOOT_CONFIG env var, ~/.joot or 
 /etc/joot.cfg in that order. 
 
