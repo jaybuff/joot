@@ -6,17 +6,20 @@ use warnings;
 our ( @EXPORT_OK, %EXPORT_TAGS );
 
 use base 'Exporter';
-@EXPORT_OK = qw( config nbd_connect nbd_disconnect bin run slurp get_ua get_url mkpath rmpath );
-%EXPORT_TAGS = ( standard => \@EXPORT_OK );
+my @standard = qw( config nbd_connect nbd_disconnect bin run slurp get_ua get_url mkpath rmpath );
+@EXPORT_OK = ( @standard, qw( is_disk_connected get_nbd_device ) );
+%EXPORT_TAGS = ( standard => \@standard );
 
-use File::Path ();
-use IPC::Cmd   ();
-use JSON       ();
+use Cwd          ();
+use File::Path   ();
+use Getopt::Long ();
+use IPC::Cmd     ();
+use JSON         ();
 use Log::Log4perl ':easy';
 use LWP::UserAgent ();
 
 # two ways to call config:
-# my $cfg = $self->config();
+# my $cfg = config();
 # print "foo setting is " . $cfg->{foo};
 # or
 # print "foo setting is " . config( "foo", "foo_default" );
@@ -79,9 +82,36 @@ sub nbd_disconnect {
     return;
 }
 
-# attach the qcow image to a device
-sub nbd_connect {
+# check all the pids in /sys/block/nbd*/pid to see if disk is already connected
+# if it's connected return the device otherwise return false
+sub is_disk_connected {
     my $disk = shift;
+
+    foreach my $dir ( glob("/sys/block/nbd*") ) {
+        if ( -e "$dir/pid" ) {
+            my $pid = slurp("$dir/pid");
+            chomp $pid;
+
+            # $out should look like this:
+            # /usr/bin/qemu-nbd --connect /dev/nbd0 --socket /var/run/joot/nbd0.sock /home/jaybuff/joot/joots/foo//disk.qcow2
+            my $out = run( bin('ps'), '--pid', $pid, qw(-o args --no-headers) );
+            my $last_arg = (split /\s+/x, $out)[-1] or next;
+            my $maybe_disk = Cwd::abs_path( $last_arg );
+            if ( $maybe_disk eq Cwd::abs_path($disk) ) {
+                if ( $dir =~ m#^/sys/block/(nbd\d+)#x ) {
+                    my $device = $1;
+                    return "/dev/$device";
+                }
+            }
+        }
+    }
+
+    return;
+}
+
+# get the next unused nbd device
+# note that this doesn't create a lock on this device, beward race conditions
+sub get_nbd_device {
 
     # considered creating our own /dev/jootN block devices to avoid conflicting
     # with user's /dev/nbd* usage, but don't know how to determine minor numbers
@@ -113,26 +143,53 @@ sub nbd_connect {
         }
     }
 
+    # TODO try to mknod more devices?
+    if ( !$device ) {
+        FATAL "Unable to allocate nbd device.  Maybe they're all in use?";
+        die "\n";
+    }
+
+    return "/dev/$device";
+}
+
+# attach the qcow image to a device
+# return the path to the attached device
+sub nbd_connect {
+    my $disk = shift;
+    if ( !-e $disk ) {
+        die "File not found: $disk\n";
+    }
+
+    $disk = Cwd::abs_path($disk);
+
+    if ( my $device = is_disk_connected($disk) ) {
+        DEBUG "$disk is already attached to $device";
+        return $device;
+    }
+
     my $sock_dir = config("sockets_dir");
     $sock_dir =~ s#/*$##x;    # remove trailing slashes
     if ( !-d $sock_dir ) {
         run( bin("mkdir"), "-p", $sock_dir );
     }
 
-    run( bin("qemu-nbd"), "--connect", "/dev/$device", "--socket", "$sock_dir/$device.sock", $disk );
+
+    my $device = get_nbd_device();
+    my ($device_name) = ( $device =~ m#/dev/(.+)#x );
+    run( bin("qemu-nbd"), "--connect", $device, "--socket", "$sock_dir/$device_name.sock", $disk );
 
     # confirm it was connected
     # if we don't get a pid in 5 seconds, die
-    local $SIG{ALRM} = sub { die "failed to connect ndb device to /dev/$device\n"; };
+    local $SIG{ALRM} = sub { die "failed to connect ndb device to $device\n"; };
     alarm(5);
     while (1) {
-        if ( -e "/sys/block/$device/pid" ) {
+        if ( -e "/sys/block/$device_name/pid" ) {
             alarm(0);    # cancel alarm
             last;
         }
     }
 
-    return "/dev/$device";
+    return $device;
 }
 
 sub bin {

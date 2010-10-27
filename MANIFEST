@@ -7,6 +7,7 @@ lib/Joot/Util.pm
 MANIFEST			This list of files
 README
 TODO
+t/data/test_disk.qcow2
 t/joot_image.t
 t/joot_util.t
 t/perlcritic.t
