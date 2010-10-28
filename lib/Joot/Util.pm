@@ -6,13 +6,12 @@ use warnings;
 our ( @EXPORT_OK, %EXPORT_TAGS );
 
 use base 'Exporter';
-my @standard = qw( config nbd_connect nbd_disconnect bin run slurp get_ua get_url mkpath rmpath );
+my @standard = qw( config nbd_connect nbd_disconnect bin run slurp get_ua get_url mkpath rmpath mount );
 @EXPORT_OK = ( @standard, qw( is_disk_connected get_nbd_device ) );
 %EXPORT_TAGS = ( standard => \@standard );
 
 use Cwd          ();
 use File::Path   ();
-use Getopt::Long ();
 use IPC::Cmd     ();
 use JSON         ();
 use Log::Log4perl ':easy';
@@ -74,6 +73,34 @@ sub get_ua {
     $ua->env_proxy();    # respect HTTP_PROXY env vars
 
     return $ua;
+}
+
+# if target is already mounted, do nothing
+# otherwise, mount it using the mount flags the user sent in (if any)
+# note that flags should be an array, not a string
+sub mount { 
+    my $src = shift;
+    my $target = shift;
+    my $mount_args = \@_;
+    
+    # normalize input
+    $target = Cwd::abs_path( $target );
+
+    # lines from /proc/mount look like this:
+    # /dev/sdh1 /home/jaybuff/joot/joots/foo/mnt/home/jaybuff ext3 rw,relatime,errors=continue,data=writeback 0 0
+    my $mounts = slurp( "/proc/mounts" );
+    foreach my $line (split "\n", $mounts) { 
+        my ($mtarget) = (split /\s+/x, $line, 3)[1];
+        $mtarget = Cwd::abs_path( $mtarget );
+
+        if ( $target eq $mtarget ) { 
+            DEBUG "$target is already mounted";
+            return;
+        }
+    }
+
+    run( bin('mount'), @{ $mount_args }, $src, $target );
+    return;
 }
 
 sub nbd_disconnect {

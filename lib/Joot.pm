@@ -52,11 +52,9 @@ sub chroot {    ## no critic qw(Subroutines::ProhibitBuiltinHomonyms)
 
     #TODO check to see if it's already connected
     my $device = nbd_connect("$joot_dir/disk.qcow2");
-    push @{ $self->{connected_devices} }, $device;    # see cleanup()
 
     #TODO some images have partitions (mount ${device}p1 etc)
-    run( bin("mount"), $device, $mnt );
-    push @{ $self->{mount_points} }, $mnt;            # see cleanup()
+    mount( $device, $mnt );
 
     # allow the user to specify the user to enter the chroot as
     my $user = $args->{user} || getpwuid($REAL_USER_ID);
@@ -69,70 +67,54 @@ sub chroot {    ## no critic qw(Subroutines::ProhibitBuiltinHomonyms)
     foreach my $dir ( $real_homedir, qw(/proc /sys /dev) ) {
         my $target = "$mnt/$dir";
         mkpath($target);
-        run( bin("mount"), "--bind", $dir, $target );
-        push @{ $self->{mount_points} }, $target;    # see cleanup()
+        mount( $dir, $target, "--bind" );
     }
 
-    # we have to fork here because we need to chroot for the getpwname to work
-    # properly.  if we didn't fork there's no way to "exit" the chroot (afaik)
-    # we have to exit it so we can clean up afterwards (umount, disconnect, etc)
-    my $pid = fork();
-    if ( $pid == 0 ) {
-        chroot($mnt);
-        my ( $uid, $gid, $homedir, $shell ) = ( getpwnam($user) )[ 2, 3, 7, 8 ];
+    chroot($mnt);
+    my ( $uid, $gid, $homedir, $shell ) = ( getpwnam($user) )[ 2, 3, 7, 8 ];
 
-        # check that the user exists in the chroot
-        if ( !defined $uid ) {
-            FATAL "User $user doesn't exist inside joot '$joot_name'";
-            FATAL "Try running \"$PROGRAM_NAME $joot_name --user root --cmd 'adduser $user'\" to create the account";
-            die "\n";
-        }
-
-        # chdir to user's $homedir which we mounted above
-        if ( $real_homedir ne $homedir ) {
-            WARN "${user}'s home dir in chroot is different than home dir outside of chroot.";
-            WARN "Mounted home dir in $real_homedir, but chdir'ing to $homedir";
-        }
-        chdir($homedir);
-
-        # set effective/real gid and uid to the uid/gid of the user we're
-        # entering the chroot as
-        # this is basically setuid/setgid
-        ( $REAL_USER_ID,  $EFFECTIVE_USER_ID )  = ( $uid, $uid );
-        ( $REAL_GROUP_ID, $EFFECTIVE_GROUP_ID ) = ( $gid, $gid );
-
-        # clean up %ENV
-        # set this env var so the user has a way to tell what joot they're in
-        $ENV{JOOT_NAME} = $joot_name;
-        foreach my $env_var (qw( SUDO_COMMAND SUDO_GID SUDO_UID SUDO_USER )) {
-            delete $ENV{$env_var};
-        }
-        $ENV{LOGNAME} = $ENV{USERNAME} = $ENV{USER} = $user;
-        $ENV{HOME} = $homedir;
-
-        # the user may have passed in this command to run instead of their shell
-        if ( my $cmd = $args->{cmd} ) {
-            exec($cmd) or die "failed to exec $cmd: $!\n";
-        }
-
-        # start the user's shell inside this chroot
-        if ( !-x $shell ) {
-            FATAL "can't execute $shell.  use \"$PROGRAM_NAME $joot_name --cmd 'chsh /bin/sh'\" to fix";
-            die "\n";
-        }
-
-        #TODO make the user's shell a login shell so .bashrc, etc are executed
-        exec($shell) or die "Failed to exec shell $shell: $!\n";
+    # check that the user exists in the chroot
+    if ( !defined $uid ) {
+        FATAL "User $user doesn't exist inside joot '$joot_name'";
+        FATAL "Try running \"$PROGRAM_NAME $joot_name --user root --cmd 'adduser $user'\" to create the account";
+        die "\n";
     }
 
-    # when the fork'ed process exits we should clean up rather than waiting for
-    # the objects destructor
-    # also if we don't wait here the user will have two shells running at once
-    # when joot exists.
-    waitpid( $pid, 0 );
-    cleanup();
+    # chdir to user's $homedir which we mounted above
+    if ( $real_homedir ne $homedir ) {
+        WARN "${user}'s home dir in chroot is different than home dir outside of chroot.";
+        WARN "Mounted home dir in $real_homedir, but chdir'ing to $homedir";
+    }
+    chdir($homedir);
 
-    return;
+    # set effective/real gid and uid to the uid/gid of the user we're
+    # entering the chroot as
+    # this is basically setuid/setgid
+    ( $REAL_USER_ID,  $EFFECTIVE_USER_ID )  = ( $uid, $uid );
+    ( $REAL_GROUP_ID, $EFFECTIVE_GROUP_ID ) = ( $gid, $gid );
+
+    # clean up %ENV
+    # set this env var so the user has a way to tell what joot they're in
+    $ENV{JOOT_NAME} = $joot_name;
+    foreach my $env_var (qw( SUDO_COMMAND SUDO_GID SUDO_UID SUDO_USER )) {
+        delete $ENV{$env_var};
+    }
+    $ENV{LOGNAME} = $ENV{USERNAME} = $ENV{USER} = $user;
+    $ENV{HOME} = $homedir;
+
+    # the user may have passed in this command to run instead of their shell
+    if ( my $cmd = $args->{cmd} ) {
+        exec($cmd) or die "failed to exec $cmd: $!\n";
+    }
+
+    # start the user's shell inside this chroot
+    if ( !-x $shell ) {
+        FATAL "can't execute $shell.  use \"$PROGRAM_NAME $joot_name --cmd 'chsh /bin/sh'\" to fix";
+        die "\n";
+    }
+
+    #TODO make the user's shell a login shell so .bashrc, etc are executed
+    exec($shell) or die "Failed to exec shell $shell: $!\n";
 }
 
 sub joot_dir {
@@ -284,27 +266,6 @@ sub rename {    ## no critic qw(Subroutines::ProhibitBuiltinHomonyms)
 
     File::Copy::move( $old, $new );
     return;
-}
-
-sub cleanup {
-    my $self = shift;
-
-    # we do both these arrays in reverse order that they were created
-    # this is because they might depend on the earlier ones
-    while ( my $mnt = pop @{ $self->{mount_points} } ) {
-        run( bin("umount"), $mnt );
-    }
-
-    while ( my $device = pop @{ $self->{connected_devices} } ) {
-        nbd_disconnect($device);
-    }
-
-    return;
-}
-
-sub DESTROY {
-    my $self = shift;
-    return $self->cleanup();
 }
 
 1;
