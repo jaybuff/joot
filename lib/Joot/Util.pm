@@ -6,7 +6,7 @@ use warnings;
 our ( @EXPORT_OK, %EXPORT_TAGS );
 
 use base 'Exporter';
-my @standard = qw( config nbd_connect nbd_disconnect bin run slurp get_ua get_url mkpath rmpath mount );
+my @standard = qw( config nbd_connect nbd_disconnect bin run slurp get_ua get_url mkpath rmpath is_mounted get_mounts );
 @EXPORT_OK = ( @standard, qw( is_disk_connected get_nbd_device ) );
 %EXPORT_TAGS = ( standard => \@standard );
 
@@ -75,32 +75,28 @@ sub get_ua {
     return $ua;
 }
 
-# if target is already mounted, do nothing
-# otherwise, mount it using the mount flags the user sent in (if any)
-# note that flags should be an array, not a string
-sub mount { 
-    my $src = shift;
-    my $target = shift;
-    my $mount_args = \@_;
-    
-    # normalize input
-    $target = Cwd::abs_path( $target );
+# returns a list of mounts in reverse sorted order
+sub get_mounts { 
+    my @mounts;
 
     # lines from /proc/mount look like this:
     # /dev/sdh1 /home/jaybuff/joot/joots/foo/mnt/home/jaybuff ext3 rw,relatime,errors=continue,data=writeback 0 0
     my $mounts = slurp( "/proc/mounts" );
     foreach my $line (split "\n", $mounts) { 
-        my ($mtarget) = (split /\s+/x, $line, 3)[1];
-        $mtarget = Cwd::abs_path( $mtarget );
-
-        if ( $target eq $mtarget ) { 
-            DEBUG "$target is already mounted";
-            return;
-        }
+        my ($target) = (split /\s+/x, $line, 3)[1];
+        push @mounts, Cwd::abs_path( $target );
     }
 
-    run( bin('mount'), @{ $mount_args }, $src, $target );
-    return;
+    return reverse sort @mounts;
+}
+    
+
+sub is_mounted { 
+    my $target = shift;
+
+    # normalize input
+    $target = Cwd::abs_path( $target );
+    return grep { $_ eq $target } get_mounts();
 }
 
 sub nbd_disconnect {

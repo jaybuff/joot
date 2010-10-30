@@ -110,7 +110,7 @@ sub get_action {
 
     # action must be exactly one of these
     my %action;
-    Getopt::Long::GetOptions( \%action, "create", "images", "list", "delete", "rename" ) or die usage() . "\n";
+    Getopt::Long::GetOptions( \%action, qw(create images list delete rename mount umount) ) or die usage() . "\n";
 
     if ( keys %action == 0 ) {
         $action{chroot} = 1;
@@ -126,6 +126,8 @@ sub action_opt_spec {
     my $act = shift;
     if ( $act eq "chroot" ) {
         return ( "user=s", "cmd=s" );
+    } elsif ( $act eq "mount" ) { 
+        return ( "always", "read-only", );
     }
 
     return;
@@ -142,6 +144,8 @@ ${message}Usage:
     $0 --list 
     $0 --delete <name> [<name> ...]
     $0 --rename <old name> <new name>
+    $0 --mount <name> [--read-only] [<dir> ...]
+    $0 --umount <name> [<dir> ...] 
 
 Global options:
     --verbose 

@@ -4,4 +4,4 @@ test what happens when we run out of /dev/nbdN devices which there are 16 of
 make the qcow disk size something bigger than 10GB when it's installed (option to --create)
 why does groups cmd inside joot think i'm a member of "root"
 automatically link common sockets (ssh, x11, etc) into joot 
-add --mount and --unmount actions
+commands with fewer than required arguments give horrible error messages

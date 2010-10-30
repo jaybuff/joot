@@ -45,31 +45,14 @@ sub chroot {    ## no critic qw(Subroutines::ProhibitBuiltinHomonyms)
     my $joot_name = shift || die "missing joot name to chroot into\n";
     my $args      = shift;
 
-    my $joot_dir = $self->joot_dir($joot_name);
-
-    my $mnt = "$joot_dir/mnt";
-    mkpath($mnt);
-
-    #TODO check to see if it's already connected
-    my $device = nbd_connect("$joot_dir/disk.qcow2");
-
-    #TODO some images have partitions (mount ${device}p1 etc)
-    mount( $device, $mnt );
-
     # allow the user to specify the user to enter the chroot as
     my $user = $args->{user} || getpwuid($REAL_USER_ID);
     my $real_homedir = ( getpwnam($user) )[7];
 
     # mount /proc, /sys, /dev and the user's home dir
-    #TODO support automount setting in config file
-    #TODO support passed in mount points in $args
-    #TODO support readonly home dirs (and mount points)
-    foreach my $dir ( $real_homedir, qw(/proc /sys /dev) ) {
-        my $target = "$mnt/$dir";
-        mkpath($target);
-        mount( $dir, $target, "--bind" );
-    }
+    $self->mount( $joot_name, $real_homedir, qw(/proc /sys /dev) );
 
+    my $mnt = $self->mount_point($joot_name);
     chroot($mnt);
     my ( $uid, $gid, $homedir, $shell ) = ( getpwnam($user) )[ 2, 3, 7, 8 ];
 
@@ -117,11 +100,116 @@ sub chroot {    ## no critic qw(Subroutines::ProhibitBuiltinHomonyms)
     exec($shell) or die "Failed to exec shell $shell: $!\n";
 }
 
+#TODO support automount setting in config file
+# three ways to call:
+# $joot->mount( $name ); # mount just $joot->mount_point
+# $joot->mount( $name, qw(/home/jaybuff /tmp /etc) );
+# $joot->mount( $name, qw(/home/jaybuff /tmp /etc), $args );
+#
+# possible args:
+# always    save this mount in the config file so we always mount it
+# read-only mount as read only
+sub mount {
+    my $self      = shift;
+    my $joot_name = shift;
+    my $args      = ( ref( $_[-1] ) eq "HASH" ) ? pop : {};
+    my @dirs      = @_;
+
+    if ( $args->{always} ) {
+
+        #TODO open up config file for joot and add option
+        die "--always not implemented\n";
+    }
+
+    # connect and mount the joot first
+    # this is a no op if it's already connected/mounted
+    my $mnt = $self->mount_point($joot_name);
+    mkpath($mnt);
+
+    my $joot_dir = $self->joot_dir($joot_name);
+    my $device   = nbd_connect("$joot_dir/disk.qcow2");
+
+    #TODO some images have partitions (mount ${device}p1 etc)
+    if ( !is_mounted($mnt) ) {
+        run( bin('mount'), $device, $mnt );
+    }
+    else {
+        DEBUG "$mnt is already mounted";
+    }
+
+    foreach my $dir (@dirs) {
+        my $target = "$mnt/$dir";
+
+        if ( is_mounted($target) ) {
+            DEBUG "$target is already mounted";
+            next;
+        }
+
+        if ( !-e $dir ) {
+            WARN "$dir doesn't exist.  Not trying to mount";
+            next;
+        }
+
+        mkpath($target);
+        run( bin('mount'), '--bind', $dir, $target );
+
+        # can't bind mount readonly in one mount command
+        # see http://lwn.net/Articles/281157/
+        if ( $args->{'read-only'} ) {
+            run( bin('mount'), '-o', 'remount,ro', $target );
+        }
+    }
+
+    return;
+}
+
+# return the directory where this joot is/should be mounted
+sub mount_point {
+    my $self      = shift;
+    my $joot_name = shift;
+
+    my $joot_dir = $self->joot_dir($joot_name);
+    return "$joot_dir/mnt";
+}
+
+# unmount specified dirs or everything if no dirs passed in
+sub umount {
+    my $self      = shift;
+    my $joot_name = shift;
+    my $args      = ( ref( $_[-1] ) eq "HASH" ) ? pop : {};
+    my @dirs      = @_;
+
+    my $mnt = $self->mount_point($joot_name);
+    if ( !@dirs ) {
+        DEBUG "unmounting all mounts for this joot";
+        foreach my $dir ( grep {/^$mnt/} get_mounts() ) {
+            run( bin("umount"), $dir );
+        }
+        return;
+    }
+
+    # if the joot itself isn't mounted, there can't be anything mounted under it
+    if ( !is_mounted($mnt) ) {
+        DEBUG "joot isn't mounted, nothing to do";
+        return;
+    }
+
+    foreach my $dir (@dirs) {
+        if ( is_mounted("$mnt/$dir") ) {
+            run( bin("umount"), "$mnt/$dir" );
+        }
+        else {
+            DEBUG "$dir isn't mounted in $joot_name";
+        }
+    }
+
+}
+
 sub joot_dir {
     my $self      = shift;
     my $joot_name = shift || "";
     my $joot_home = config("joot_home");
-    return "$joot_home/joots/$joot_name/";
+    return "$joot_home/joots/$joot_name";
 }
 
 sub get_image {
@@ -227,7 +315,7 @@ sub list {
 
 sub delete {    ## no critic qw(Subroutines::ProhibitBuiltinHomonyms Subroutines::RequireArgUnpacking)
     my $self  = shift;
-    my $args  = pop;
+    my $args  = ( ref( $_[-1] ) eq "HASH" ) ? pop : {};
     my @joots = @_;
 
     if ( !@joots ) {
