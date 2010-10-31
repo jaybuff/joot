@@ -21,12 +21,13 @@ Prereqs
 -------
 On Debian, you'll need to install these packages:
 export DEBIAN_FRONTEND=noninteractive
-sudo apt-get install mount sudo nbd-client qemu-kvm libjson-perl liblog-log4perl-perl perl-modules -y
+sudo apt-get install mount sudo qemu-kvm libjson-perl liblog-log4perl-perl perl-modules -y
 # for development only 
 sudo apt-get install libtest-perl-critic-perl libtest-exception-perl libtest-pod-perl -y
 
 linux kernel 2.6.26 for nbd support (ubuntu release intrepid ibex or later)
-sudo modprobe nbd # we can safely run this even if it's already loaded
+When you mount a joot it uses a /dev/nbdX device.  This will give you 256 (default is 16)
+sudo modprobe nbd max_dev=256
 
 Creating Images
 ---------------
