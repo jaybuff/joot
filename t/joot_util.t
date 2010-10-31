@@ -23,11 +23,11 @@ use Joot::Util ":standard";
 # config
 {
     $ENV{JOOT_CONFIG} = "$FindBin::Bin/unit.conf";
-    is( config("joot_home"), "./joot_home", "got scalar from config" );
-    is_deeply( config("image_sources"), ["file://data/images.js"], "got array from config" );
+    is( config("joot_home"), "./t/joot_home", "got scalar from config" );
+    is_deeply( config("image_sources"), ["file:t/data/images.js"], "got array from config" );
 
     # with default
-    is( config( "joot_home", "default" ), "./joot_home", "config scalar default when set" );
+    is( config( "joot_home", "default" ), "./t/joot_home", "config scalar default when set" );
     is( config( "unset",     "default" ), "default",     "config scalar default when unset" );
 
 }
@@ -45,7 +45,7 @@ SKIP: {
         skip( "run these tests as root so they can run qemu-nbd", 10 );
     }
     my $device;
-    my $disk = "$FindBin::Bin/data/test_disk.qcow2";
+    my $disk = "$FindBin::Bin/data/test_image.qcow2";
 
     my $expected_dev;
     lives_ok( sub { $expected_dev = Joot::Util::get_nbd_device() }, "get_nbd_device" );

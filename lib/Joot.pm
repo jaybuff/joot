@@ -242,7 +242,6 @@ sub create {
     if ( -e $joot_dir ) {
         die "$joot_name already exists.\n";
     }
-    mkpath($joot_dir);
 
     #TODO default image (from config?  or uname?)
     if ( !$image_name ) {
@@ -256,6 +255,7 @@ sub create {
         $image->download();
     }
 
+    mkpath($joot_dir);
     run( bin("qemu-img"), qw(create -f qcow2 -o), "backing_file=" . $image->path(), $self->disk($joot_name) );
 
     my $conf = {
