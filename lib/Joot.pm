@@ -109,7 +109,7 @@ sub chroot {    ## no critic qw(Subroutines::ProhibitBuiltinHomonyms)
 # possible args:
 # always    save this mount in the config file so we always mount it
 # read-only mount as read only
-sub mount {
+sub mount { ## no critic qw(Subroutines::RequireArgUnpacking)
     my $self      = shift;
     my $joot_name = shift;
     my $args      = ( ref( $_[-1] ) eq "HASH" ) ? pop : {};
@@ -173,7 +173,7 @@ sub mount_point {
 }
 
 # unmount specified dirs or everything if no dirs passed in
-sub umount {
+sub umount { ## no critic qw(Subroutines::RequireArgUnpacking)
     my $self      = shift;
     my $joot_name = shift;
     my $args      = ( ref( $_[-1] ) eq "HASH" ) ? pop : {};
@@ -182,8 +182,17 @@ sub umount {
     my $mnt = $self->mount_point($joot_name);
     if ( !@dirs ) {
         DEBUG "unmounting all mounts for this joot";
-        foreach my $dir ( grep {/^$mnt/} get_mounts() ) {
+        foreach my $dir ( grep {/^$mnt/x} get_mounts() ) {
             run( bin("umount"), $dir );
+        }
+
+        # by now $mnt is unmounted, so we can disconnect the disk from nbd
+        my $disk = $self->disk($joot_name);
+        if ( my $device = Joot::Util::is_disk_connected($disk) ) {
+            nbd_disconnect($device);
+        }
+        else {
+            DEBUG "$disk wasn't connect to a nbd device; not trying to disconnect";
         }
         return;
     }
@@ -203,6 +212,7 @@ sub umount {
         }
     }
 
+    return;
 }
 
 sub joot_dir {
@@ -246,7 +256,7 @@ sub create {
         $image->download();
     }
 
-    run( bin("qemu-img"), qw(create -f qcow2 -o), "backing_file=" . $image->path(), "$joot_dir/disk.qcow2" );
+    run( bin("qemu-img"), qw(create -f qcow2 -o), "backing_file=" . $image->path(), $self->disk($joot_name) );
 
     my $conf = {
         image   => $image->url(),
@@ -260,6 +270,14 @@ sub create {
     close $conf_fh;
 
     return 1;
+}
+
+sub disk {
+    my $self      = shift;
+    my $joot_name = shift;
+
+    my $joot_dir = $self->joot_dir($joot_name);
+    return "$joot_dir/disk.qcow2";
 }
 
 sub images {
