@@ -57,7 +57,11 @@ if ( $action ne "images" && $action ne "list" ) {
 my $ret;
 eval {
     my $joot = Joot->new();
-    $ret = $joot->$action( @ARGV, \%options );
+    if ( keys %options ) { 
+        $ret = $joot->$action( @ARGV, \%options );
+    } else { 
+        $ret = $joot->$action( @ARGV );
+    }
     1;
 } or do {
     FATAL $EVAL_ERROR if $EVAL_ERROR !~ /\A\s+\z/x;
