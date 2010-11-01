@@ -27,7 +27,7 @@ sudo apt-get install libtest-perl-critic-perl libtest-exception-perl libtest-pod
 
 linux kernel 2.6.26 for nbd support (ubuntu release intrepid ibex or later)
 When you mount a joot it uses a /dev/nbdX device.  This will give you 256 (default is 16)
-sudo modprobe nbd max_dev=256
+sudo modprobe nbd nbds_max=256
 
 Creating Images
 ---------------
