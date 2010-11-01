@@ -136,14 +136,6 @@ sub is_disk_connected {
 # note that this doesn't create a lock on this device, beward race conditions
 sub get_nbd_device {
 
-    # considered creating our own /dev/jootN block devices to avoid conflicting
-    # with user's /dev/nbd* usage, but don't know how to determine minor numbers
-    # 43 is defined in linux kernel under include/linux/major.h as NBD_MAJOR
-    # but if I use minor # 0, it conflicts with /dev/nbd0
-    # i.e. this doesn't work:
-    # sudo mknod /dev/joot0 b 43 0
-
-    # TODO make device name configurable instead of assuming nbd
     my @nbd_sys_dirs = glob("/sys/block/nbd*");
     if ( !@nbd_sys_dirs ) {
         die "Couldn't find any nbd devices in /sys/block.  Try \"sudo modprobe nbd\"\n";
@@ -166,9 +158,8 @@ sub get_nbd_device {
         }
     }
 
-    # TODO try to mknod more devices?
     if ( !$device ) {
-        FATAL "Unable to allocate nbd device.  Maybe they're all in use?";
+        FATAL "Unable to allocate nbd device.  Maybe they're all in use?  Try \"sudo modprobe nbd nbds_max=256\"";
         die "\n";
     }
 
