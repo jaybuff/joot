@@ -46,7 +46,7 @@ sub chroot {    ## no critic qw(Subroutines::ProhibitBuiltinHomonyms)
     my $args      = shift;
 
     my $joots = $self->list();
-    if ( !exists $joots->{$joot_name} ) { 
+    if ( !exists $joots->{$joot_name} ) {
         die "Joot \"$joot_name\" does not exist\n";
     }
 
@@ -54,8 +54,10 @@ sub chroot {    ## no critic qw(Subroutines::ProhibitBuiltinHomonyms)
     my $user = $args->{user} || getpwuid($REAL_USER_ID);
     my $real_homedir = ( getpwnam($user) )[7];
 
-    # mount /proc, /sys, /dev and the user's home dir
-    $self->mount( $joot_name, $real_homedir, qw(/proc /sys /dev) );
+    # mount the user's home dir and any mounts in the conf file
+    #TODO add a --no-home-dir option to skip this
+    $self->mount( $joot_name, $real_homedir );
+    $self->automount($joot_name);
 
     my $mnt = $self->mount_point($joot_name);
     chroot($mnt);
@@ -105,39 +107,61 @@ sub chroot {    ## no critic qw(Subroutines::ProhibitBuiltinHomonyms)
     exec($shell) or die "Failed to exec shell $shell: $!\n";
 }
 
-#TODO support automount setting in config file
+sub get_config {
+    my $self      = shift;
+    my $joot_name = shift;
+
+    my $joot_dir  = $self->joot_dir($joot_name);
+    my $conf_file = "$joot_dir/config.js";
+    return JSON::from_json( slurp($conf_file) );
+}
+
+sub set_config {
+    my $self      = shift;
+    my $joot_name = shift;
+    my $conf      = shift;
+
+    my $joot_dir  = $self->joot_dir($joot_name);
+    my $conf_file = "$joot_dir/config.js";
+    open my $conf_fh, '>', $conf_file or die "Failed to write to $conf_file: $!\n";
+    my $config = JSON::to_json( $conf, { pretty => 1 } );
+    print $conf_fh $config;
+    close $conf_fh;
+
+    return;
+}
+
 # three ways to call:
-# $joot->mount( $name ); # mount just $joot->mount_point
+# $joot->mount( $name ); # mount $joot->mount_point and automounts
 # $joot->mount( $name, qw(/home/jaybuff /tmp /etc) );
 # $joot->mount( $name, qw(/home/jaybuff /tmp /etc), $args );
 #
 # possible args:
 # always    save this mount in the config file so we always mount it
 # read-only mount as read only
-sub mount { ## no critic qw(Subroutines::RequireArgUnpacking)
+sub mount {    ## no critic qw(Subroutines::RequireArgUnpacking)
     my $self      = shift;
     my $joot_name = shift;
     my $args      = ( ref( $_[-1] ) eq "HASH" ) ? pop : {};
     my @dirs      = @_;
-
-    if ( $args->{always} ) {
-
-        #TODO open up config file for joot and add option
-        die "--always not implemented\n";
-    }
 
     # connect and mount the joot first
     # this is a no op if it's already connected/mounted
     my $mnt = $self->mount_point($joot_name);
     mkpath($mnt);
 
-    my $device = nbd_connect( $self->disk( $joot_name ) );
+    my $device = nbd_connect( $self->disk($joot_name) );
+
     #TODO some images have partitions (mount ${device}p1 etc)
     if ( !is_mounted($mnt) ) {
         run( bin('mount'), $device, $mnt );
     }
     else {
         DEBUG "$mnt is already mounted";
+    }
+
+    if ( !@dirs ) {
+        return $self->automount($joot_name);
     }
 
     foreach my $dir (@dirs) {
@@ -163,6 +187,27 @@ sub mount { ## no critic qw(Subroutines::RequireArgUnpacking)
         }
     }
 
+    if ( $args->{always} ) {
+        delete $args->{always};
+        my $conf = $self->get_config($joot_name);
+        foreach my $dir (@dirs) {
+            $conf->{automount}->{$dir} = $args;
+        }
+        $self->set_config( $joot_name, $conf );
+    }
+
+    return;
+}
+
+sub automount {
+    my $self      = shift;
+    my $joot_name = shift;
+
+    my $conf = $self->get_config($joot_name);
+    foreach my $dir ( keys %{ $conf->{automount} } ) {
+        $self->mount( $joot_name, $dir, $conf->{automount}->{$dir} );
+    }
+
     return;
 }
 
@@ -176,7 +221,7 @@ sub mount_point {
 }
 
 # unmount specified dirs or everything if no dirs passed in
-sub umount { ## no critic qw(Subroutines::RequireArgUnpacking)
+sub umount {    ## no critic qw(Subroutines::RequireArgUnpacking)
     my $self      = shift;
     my $joot_name = shift;
     my $args      = ( ref( $_[-1] ) eq "HASH" ) ? pop : {};
@@ -261,16 +306,19 @@ sub create {
     mkpath($joot_dir);
     run( bin("qemu-img"), qw(create -f qcow2 -o), "backing_file=" . $image->path(), $self->disk($joot_name) );
 
-    my $conf = {
-        image   => $image->url(),
-        creator => $ENV{SUDO_USER} || $ENV{USER},
-        ctime   => time(),
-    };
-
-    my $conf_file = "$joot_dir/config.js";
-    open my $conf_fh, '>', $conf_file or die "Failed to write to $conf_file: $!\n";
-    print $conf_fh JSON::to_json($conf);
-    close $conf_fh;
+    $self->set_config(
+        $joot_name,
+        {
+            image     => $image->url(),
+            creator   => $ENV{SUDO_USER} || $ENV{USER},
+            ctime     => time(),
+            automount => {
+                "/proc" => {},
+                "/sys"  => {},
+                "/dev"  => {},
+            }
+        }
+    );
 
     return 1;
 }
