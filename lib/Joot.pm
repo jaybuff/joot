@@ -45,6 +45,11 @@ sub chroot {    ## no critic qw(Subroutines::ProhibitBuiltinHomonyms)
     my $joot_name = shift || die "missing joot name to chroot into\n";
     my $args      = shift;
 
+    my $joots = $self->list();
+    if ( !exists $joots->{$joot_name} ) { 
+        die "Joot \"$joot_name\" does not exist\n";
+    }
+
     # allow the user to specify the user to enter the chroot as
     my $user = $args->{user} || getpwuid($REAL_USER_ID);
     my $real_homedir = ( getpwnam($user) )[7];
@@ -126,9 +131,7 @@ sub mount { ## no critic qw(Subroutines::RequireArgUnpacking)
     my $mnt = $self->mount_point($joot_name);
     mkpath($mnt);
 
-    my $joot_dir = $self->joot_dir($joot_name);
-    my $device   = nbd_connect("$joot_dir/disk.qcow2");
-
+    my $device = nbd_connect( $self->disk( $joot_name ) );
     #TODO some images have partitions (mount ${device}p1 etc)
     if ( !is_mounted($mnt) ) {
         run( bin('mount'), $device, $mnt );
