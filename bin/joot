@@ -148,7 +148,7 @@ ${message}Usage:
     $0 --list 
     $0 --delete <name> [<name> ...]
     $0 --rename <old name> <new name>
-    $0 --mount <name> [--read-only] [<dir> ...]
+    $0 --mount <name> [--read-only] [--always] [<dir> ...]
     $0 --umount <name> [<dir> ...] 
 
 Global options:
