@@ -42,8 +42,8 @@ sub new {
 # chroot( "foo", { user => "root", cmd => "adduser jaybuff" } );
 sub chroot {    ## no critic qw(Subroutines::ProhibitBuiltinHomonyms)
     my $self      = shift;
+    my $args      = ( ref( $_[-1] ) eq "HASH" ) ? pop : {};
     my $joot_name = shift || die "missing joot name to chroot into\n";
-    my $args      = shift;
 
     my $joots = $self->list();
     if ( !exists $joots->{$joot_name} ) {
@@ -141,8 +141,8 @@ sub set_config {
 # read-only mount as read only
 sub mount {    ## no critic qw(Subroutines::RequireArgUnpacking)
     my $self      = shift;
-    my $joot_name = shift or die "missing joot name to mount\n";
     my $args      = ( ref( $_[-1] ) eq "HASH" ) ? pop : {};
+    my $joot_name = shift or die "missing joot name to mount\n";
     my @dirs      = @_;
 
     # connect and mount the joot first
@@ -223,8 +223,8 @@ sub mount_point {
 # unmount specified dirs or everything if no dirs passed in
 sub umount {    ## no critic qw(Subroutines::RequireArgUnpacking)
     my $self      = shift;
-    my $joot_name = shift;
     my $args      = ( ref( $_[-1] ) eq "HASH" ) ? pop : {};
+    my $joot_name = shift;
     my @dirs      = @_;
 
     my $mnt = $self->mount_point($joot_name);
