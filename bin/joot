@@ -129,7 +129,7 @@ sub get_action {
 sub action_opt_spec {
     my $act = shift;
     if ( $act eq "chroot" ) {
-        return ( "user=s", "cmd=s" );
+        return ( "user=s", "cmd=s", "no-home", "ro-home" );
     } elsif ( $act eq "mount" ) { 
         return ( "always", "read-only", );
     }
@@ -142,7 +142,7 @@ sub usage {    ## no critic qw(Subroutines::RequireArgUnpacking)
     $message .= "\n" if $message;
     return <<"EOM";
 ${message}Usage: 
-    $0 <joot name> [--user <user>] [--cmd <cmd>]
+    $0 <joot name> [--user <user>] [--cmd <cmd>] [--no-home] [--ro-home]
     $0 --create <name> <image>
     $0 --images 
     $0 --list 

@@ -40,6 +40,11 @@ sub new {
 # usage:
 # chroot( "foo" );
 # chroot( "foo", { user => "root", cmd => "adduser jaybuff" } );
+# possible args:
+# user      user to enter the chroot as
+# cmd       run this command instead of the user's shell
+# no-home   don't mount the user's home directory inside the chroot
+# ro-home   mount the user's home dir as read-only
 sub chroot {    ## no critic qw(Subroutines::ProhibitBuiltinHomonyms)
     my $self      = shift;
     my $args      = ( ref( $_[-1] ) eq "HASH" ) ? pop : {};
@@ -52,11 +57,16 @@ sub chroot {    ## no critic qw(Subroutines::ProhibitBuiltinHomonyms)
 
     # allow the user to specify the user to enter the chroot as
     my $user = $args->{user} || getpwuid($REAL_USER_ID);
-    my $real_homedir = ( getpwnam($user) )[7];
 
-    # mount the user's home dir and any mounts in the conf file
-    #TODO add a --no-home-dir option to skip this
-    $self->mount( $joot_name, $real_homedir );
+    my $real_homedir = ( getpwnam($user) )[7];
+    if ( !$args->{'no-home'} ) {
+        my $args = $args->{'ro-home'} ? { 'read-only' => 1 } : {};
+        $self->mount( $joot_name, $real_homedir, $args );
+    }
+    else {
+        $self->umount( $joot_name, $real_homedir );
+    }
+
     $self->automount($joot_name);
 
     my $mnt = $self->mount_point($joot_name);
@@ -70,8 +80,8 @@ sub chroot {    ## no critic qw(Subroutines::ProhibitBuiltinHomonyms)
         die "\n";
     }
 
-    # chdir to user's $homedir which we mounted above
-    if ( $real_homedir ne $homedir ) {
+    # chdir to user's $homedir which we (may have) mounted above
+    if ( !$args->{'no-home'} && $real_homedir ne $homedir ) {
         WARN "${user}'s home dir in chroot is different than home dir outside of chroot.";
         WARN "Mounted home dir in $real_homedir, but chdir'ing to $homedir";
     }
