@@ -141,7 +141,7 @@ sub set_config {
 # read-only mount as read only
 sub mount {    ## no critic qw(Subroutines::RequireArgUnpacking)
     my $self      = shift;
-    my $joot_name = shift;
+    my $joot_name = shift or die "missing joot name to mount\n";
     my $args      = ( ref( $_[-1] ) eq "HASH" ) ? pop : {};
     my @dirs      = @_;
 
