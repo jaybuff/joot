@@ -142,8 +142,9 @@ sub set_config {
 # $joot->mount( $name, qw(/home/jaybuff /tmp /etc), $args );
 #
 # possible args:
-# always    save this mount in the config file so we always mount it
-# read-only mount as read only
+# always        save this mount in the config file so we always mount it
+# read-only     mount as read only
+# no-automount  don't call automount
 sub mount {    ## no critic qw(Subroutines::RequireArgUnpacking)
     my $self      = shift;
     my $args      = ( ref( $_[-1] ) eq "HASH" ) ? pop : {};
@@ -165,7 +166,7 @@ sub mount {    ## no critic qw(Subroutines::RequireArgUnpacking)
         DEBUG "$mnt is already mounted";
     }
 
-    if ( !@dirs ) {
+    if ( !@dirs && !$args->{'no-automount'} ) {
         return $self->automount($joot_name);
     }
 
@@ -311,6 +312,20 @@ sub create {
     mkpath($joot_dir);
     run( bin("qemu-img"), qw(create -f qcow2 -o), "backing_file=" . $image->path(), $self->disk($joot_name) );
 
+    $self->mount( $joot_name, { 'no-automount' => 1 } );
+    my $mnt = $self->mount_point($joot_name);
+    my $files = config( "copy_from_root", [] );
+    if ( ref($files) ne "ARRAY" ) {
+        die "setting copy_from_root in config must be an array\n";
+    }
+    foreach my $file ( @{$files} ) {
+        if ( !-e $file ) {
+            WARN "$file doesn't exist.  not copying into joot";
+            next;
+        }
+        run( bin("cp"), $file, "$mnt/$file" );
+    }
+
     $self->set_config(
         $joot_name,
         {
@@ -397,7 +412,7 @@ sub delete {    ## no critic qw(Subroutines::ProhibitBuiltinHomonyms Subroutines
     }
 
     foreach my $joot_name (@joots) {
-        $self->umount( $joot_name );
+        $self->umount($joot_name);
         my $joot_dir = $self->joot_dir($joot_name);
         if ( !-d $joot_dir ) {
             WARN "$joot_name doesn't exist";
