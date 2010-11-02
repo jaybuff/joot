@@ -44,7 +44,6 @@ debootstrap --variant=buildd --arch i386 lucid \
     /mnt/$image_name/ http://archive.ubuntu.com/ubuntu/
 sudo chroot /mnt/$image_name apt-get clean
 joot_image --umount $image_file
-qemu-nbd --disconnect /dev/nbd0
 rmdir /mnt/$image_name
 
 Eventually I hope to publish a collection of images a la stacklet.com (but 
