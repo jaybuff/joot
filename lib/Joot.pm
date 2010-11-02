@@ -397,6 +397,7 @@ sub delete {    ## no critic qw(Subroutines::ProhibitBuiltinHomonyms Subroutines
     }
 
     foreach my $joot_name (@joots) {
+        $self->umount( $joot_name );
         my $joot_dir = $self->joot_dir($joot_name);
         if ( !-d $joot_dir ) {
             WARN "$joot_name doesn't exist";
