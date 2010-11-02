@@ -1,0 +1,51 @@
+#!/usr/bin/perl
+
+use strict;
+use warnings;
+
+# ugg, sudo strips PERL5LIB env, so we do this here so we can use the dev copy
+use FindBin ();
+use if $ENV{JOOT_DEVELOPER}, lib => "$FindBin::Bin/../lib";
+
+use Joot::Util qw( mkpath bin run sudo nbd_connect nbd_disconnect );
+use Getopt::Long;
+use Log::Log4perl qw(:easy);
+Log::Log4perl->easy_init($DEBUG);
+
+sudo( $0, \@ARGV );
+my %options;
+Getopt::Long::GetOptions( \%options, qw(create mount umount|unmount size) );
+
+my $image = shift or die usage("missing image\n");
+if ( $options{mount} ) {
+    my $mnt = shift or die usage("missing mount point\n");
+    mkpath($mnt);
+    my $device = nbd_connect($image);
+    run( bin("mount"), $device, $mnt );
+}
+elsif ( $options{umount} ) {
+    if ( my $device = Joot::Util::is_disk_connected($image) ) {
+        run( bin("umount"), $device );
+        nbd_disconnect($device);
+    }
+    else {
+        die "$image isn't mounted\n";
+    }
+}
+elsif ( $options{create} ) {
+    my $size = shift || "10G";
+    run( bin("qemu-img"), qw( create -f qcow2 ), $image, $size );
+    my $device = nbd_connect($image);
+    run( bin("mkfs.ext3"), qw( -b 4096 ), $device );
+    nbd_disconnect($device);
+}
+
+sub usage {
+    my $mesg = shift || "\n";
+    return <<"EOF"
+${mesg}Usage:
+    $0 --create <image file> [--size <size>]
+    $0 --mount <file> <mount point>
+    $0 --umount <file>
+EOF
+}

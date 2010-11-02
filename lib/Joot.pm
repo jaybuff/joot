@@ -8,7 +8,6 @@ $VERSION = "0.0.1";
 
 use English '-no_match_vars';
 use File::Copy  ();
-use IPC::Cmd    ();
 use Joot::Image ();
 use Joot::Util ':standard';
 use JSON ();
@@ -18,10 +17,6 @@ use LWP::UserAgent ();
 sub new {
     my $proto = shift;
     my $class = ref($proto) || $proto;
-
-    if ( get_logger()->level() == $DEBUG ) {
-        $IPC::Cmd::VERBOSE = 1;
-    }
 
     my $self = bless {}, $class;
     my $joot_home = config("joot_home");

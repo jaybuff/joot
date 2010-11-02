@@ -7,13 +7,13 @@ our ( @EXPORT_OK, %EXPORT_TAGS );
 
 use base 'Exporter';
 my @standard = qw( config nbd_connect nbd_disconnect bin run slurp get_ua get_url mkpath rmpath is_mounted get_mounts );
-@EXPORT_OK = ( @standard, qw( is_disk_connected get_nbd_device ) );
+@EXPORT_OK = ( @standard, qw( is_disk_connected get_nbd_device sudo ) );
 %EXPORT_TAGS = ( standard => \@standard );
 
-use Cwd          ();
-use File::Path   ();
-use IPC::Cmd     ();
-use JSON         ();
+use Cwd        ();
+use File::Path ();
+use IPC::Cmd   ();
+use JSON       ();
 use Log::Log4perl ':easy';
 use LWP::UserAgent ();
 
@@ -76,26 +76,25 @@ sub get_ua {
 }
 
 # returns a list of mounts in reverse sorted order
-sub get_mounts { 
+sub get_mounts {
     my @mounts;
 
     # lines from /proc/mount look like this:
     # /dev/sdh1 /home/jaybuff/joot/joots/foo/mnt/home/jaybuff ext3 rw,relatime,errors=continue,data=writeback 0 0
-    my $mounts = slurp( "/proc/mounts" );
-    foreach my $line (split "\n", $mounts) { 
-        my ($target) = (split /\s+/x, $line, 3)[1];
-        push @mounts, Cwd::abs_path( $target );
+    my $mounts = slurp("/proc/mounts");
+    foreach my $line ( split "\n", $mounts ) {
+        my ($target) = ( split /\s+/x, $line, 3 )[1];
+        push @mounts, Cwd::abs_path($target);
     }
 
     return reverse sort @mounts;
 }
-    
 
-sub is_mounted { 
+sub is_mounted {
     my $target = shift;
 
     # normalize input
-    $target = Cwd::abs_path( $target );
+    $target = Cwd::abs_path($target);
     return grep { $_ eq $target } get_mounts();
 }
 
@@ -118,8 +117,8 @@ sub is_disk_connected {
             # $out should look like this:
             # /usr/bin/qemu-nbd --connect /dev/nbd0 --socket /var/run/joot/nbd0.sock /home/jaybuff/joot/joots/foo//disk.qcow2
             my $out = run( bin('ps'), '--pid', $pid, qw(-o args --no-headers) );
-            my $last_arg = (split /\s+/x, $out)[-1] or next;
-            my $maybe_disk = Cwd::abs_path( $last_arg );
+            my $last_arg = ( split /\s+/x, $out )[-1] or next;
+            my $maybe_disk = Cwd::abs_path($last_arg);
             if ( $maybe_disk eq Cwd::abs_path($disk) ) {
                 if ( $dir =~ m#^/sys/block/(nbd\d+)#x ) {
                     my $device = $1;
@@ -187,7 +186,6 @@ sub nbd_connect {
         run( bin("mkdir"), "-p", $sock_dir );
     }
 
-
     my $device = get_nbd_device();
     my ($device_name) = ( $device =~ m#/dev/(.+)#x );
     run( bin("qemu-nbd"), "--connect", $device, "--socket", "$sock_dir/$device_name.sock", $disk );
@@ -222,6 +220,10 @@ sub bin {
 
 sub run {
     my @args = @_;
+
+    if ( get_logger()->level() == $DEBUG ) {
+        $IPC::Cmd::VERBOSE = 1;
+    }
 
     my $cmd = join( " ", @args );
     my ( $success, $err, $full_buf, $stdout_buf, $stderr_buf ) = IPC::Cmd::run( command => \@args );
@@ -275,6 +277,18 @@ sub rmpath {
 
     File::Path::remove_tree( $dir, { verbose => get_logger()->level() == $DEBUG } );
     return;
+}
+
+sub sudo {
+    my $cmd  = shift;
+    my $argv = shift;
+
+    # escalate privileges to root, unless the user is already root
+    if ( $< != 0 ) {
+        my @cmd = ( bin("sudo"), "-E", $cmd, @{$argv} );
+        DEBUG "exec " . join " ", @cmd;
+        exec(@cmd);
+    }
 }
 
 1;

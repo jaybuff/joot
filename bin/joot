@@ -9,7 +9,7 @@ use if $ENV{JOOT_DEVELOPER}, lib => "$FindBin::Bin/../lib";
 
 use English '-no_match_vars';
 use Joot ();
-use Joot::Util 'bin';
+use Joot::Util qw(bin sudo);
 use Getopt::Long ();
 use Log::Log4perl ':easy';
 
@@ -51,7 +51,7 @@ if ( $action ne "images" && $action ne "list" ) {
         push @{$orig_argv}, "--user", scalar( getpwuid($REAL_USER_ID) );
     }
 
-    sudo($orig_argv);
+    sudo($0, $orig_argv);
 }
 
 my $ret;
@@ -97,17 +97,6 @@ sub max_len {    ## no critic qw(Subroutines::RequireArgUnpacking)
         $len = $l if $l > $len;
     }
     return $len;
-}
-
-sub sudo {
-    my $argv = shift;
-
-    # escalate privileges to root, unless the user is already root
-    if ( $< != 0 ) {
-        my @cmd = ( bin("sudo"), "-E", $0, @{$argv} );
-        DEBUG "exec " . join " ", @cmd;
-        exec(@cmd);
-    }
 }
 
 sub get_action {

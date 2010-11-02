@@ -36,18 +36,14 @@ http://geek.co.il/wp/2010/03/14/how-to-build-a-chroot-jail-environment-for-cento
 
 Ubuntu/Debian:
 export image_name=debian-5.0-i386-`date +%Y%m%d`
-export image=/tmp/$image_name.qcow2
-sudo su  
-qemu-img create -f qcow2 $image 10G
-qemu-nbd --connect /dev/nbd0 --socket /tmp/$image_name.sock $image
-mkfs.ext3 -b 4096 /dev/nbd0 
-mkdir -p /mnt/$image_name/
-mount /dev/nbd0 /mnt/$image_name/
-apt-get install debootstrap
+export image_file=~/images/$image_name.qcow2
+joot_image --create $image_file --size 10G
+joot_image --mount $image_file /mnt/$image_name
+sudo apt-get install debootstrap
 debootstrap --variant=buildd --arch i386 lucid \
     /mnt/$image_name/ http://archive.ubuntu.com/ubuntu/
-chroot /mnt/$image_name apt-get clean
-umount /dev/nbd0
+sudo chroot /mnt/$image_name apt-get clean
+joot_image --umount $image_file
 qemu-nbd --disconnect /dev/nbd0
 rmdir /mnt/$image_name
 
