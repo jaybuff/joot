@@ -4,6 +4,7 @@ use strict;
 use warnings;
 
 use Carp 'croak';
+use Cwd ();
 use Log::Log4perl ':easy';
 use LWP::UserAgent ();
 use Joot::Util     ();
@@ -83,7 +84,7 @@ sub path {
     }
 
     my $joot_home = Joot::Util::config("joot_home");
-    return "$joot_home/images/$file";
+    return Cwd::abs_path("$joot_home/images/$file");
 }
 
 sub cached {

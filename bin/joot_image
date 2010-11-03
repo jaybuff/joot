@@ -16,9 +16,9 @@ sudo( $0, \@ARGV );
 my %options;
 Getopt::Long::GetOptions( \%options, qw(create mount umount|unmount size) );
 
-my $image = shift or die usage("missing image\n");
+my $image = shift or die usage("missing image\n") . "\n";
 if ( $options{mount} ) {
-    my $mnt = shift or die usage("missing mount point\n");
+    my $mnt = shift or die usage("missing mount point\n") . "\n";
     mkpath($mnt);
     my $device = nbd_connect($image);
     run( bin("mount"), $device, $mnt );

@@ -40,7 +40,7 @@ sub new {
 # cmd       run this command instead of the user's shell
 # no-home   don't mount the user's home directory inside the chroot
 # ro-home   mount the user's home dir as read-only
-sub chroot {    ## no critic qw(Subroutines::ProhibitBuiltinHomonyms)
+sub chroot {    ## no critic qw(Subroutines::ProhibitBuiltinHomonyms Subroutines::RequireArgUnpacking)
     my $self      = shift;
     my $args      = ( ref( $_[-1] ) eq "HASH" ) ? pop : {};
     my $joot_name = shift || die "missing joot name to chroot into\n";
@@ -55,8 +55,8 @@ sub chroot {    ## no critic qw(Subroutines::ProhibitBuiltinHomonyms)
 
     my $real_homedir = ( getpwnam($user) )[7];
     if ( !$args->{'no-home'} ) {
-        my $args = $args->{'ro-home'} ? { 'read-only' => 1 } : {};
-        $self->mount( $joot_name, $real_homedir, $args );
+        my $mount_args = $args->{'ro-home'} ? { 'read-only' => 1 } : {};
+        $self->mount( $joot_name, $real_homedir, $mount_args );
     }
     else {
         $self->umount( $joot_name, $real_homedir );
@@ -233,7 +233,7 @@ sub umount {    ## no critic qw(Subroutines::RequireArgUnpacking)
     my $joot_name = shift;
     my @dirs      = @_;
 
-    my $mnt = $self->mount_point($joot_name);
+    my $mnt = Cwd::abs_path( $self->mount_point($joot_name) );
     if ( !@dirs ) {
         DEBUG "unmounting all mounts for this joot";
         foreach my $dir ( grep {/^$mnt/x} get_mounts() ) {

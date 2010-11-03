@@ -118,6 +118,10 @@ sub is_disk_connected {
             # /usr/bin/qemu-nbd --connect /dev/nbd0 --socket /var/run/joot/nbd0.sock /home/jaybuff/joot/joots/foo//disk.qcow2
             my $out = run( bin('ps'), '--pid', $pid, qw(-o args --no-headers) );
             my $last_arg = ( split /\s+/x, $out )[-1] or next;
+            if ( !-e $last_arg ) {
+                WARN "qemu-nbd is connected to $last_arg which doesn't exist";
+                next;
+            }
             my $maybe_disk = Cwd::abs_path($last_arg);
             if ( $maybe_disk eq Cwd::abs_path($disk) ) {
                 if ( $dir =~ m#^/sys/block/(nbd\d+)#x ) {

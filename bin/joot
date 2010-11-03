@@ -66,7 +66,7 @@ eval {
 } or do {
     FATAL $EVAL_ERROR if $EVAL_ERROR !~ /\A\s+\z/x;
     FATAL "$0 version $VERSION";
-    die usage();
+    die usage() . "\n";
 };
 
 # format the responses for list and images actions

@@ -1,4 +1,5 @@
 bin/joot
+bin/joot_image
 Build.PL
 joot.cfg
 lib/Joot.pm
@@ -6,14 +7,14 @@ lib/Joot/Image.pm
 lib/Joot/Util.pm
 MANIFEST			This list of files
 README
-TODO
+t/create.t
+t/data/images.js
+t/data/test_image.qcow2
+t/images.t
 t/joot_image.t
 t/joot_util.t
 t/perlcritic.t
 t/perlcriticrc
 t/pod.t
 t/unit.conf
-t/create.t
-t/data/images.js
-t/data/test_image.qcow2
-t/images.t
+TODO
