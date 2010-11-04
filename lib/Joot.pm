@@ -210,8 +210,22 @@ sub automount {
     my $joot_name = shift;
 
     my $conf = $self->get_config($joot_name);
+
+    # we need to sanitize the directories so we can properly sort them
+    # if /foo and /foo/bar are both in auto mounts, we have to mount
+    # /foo before we can mount /foo/bar, thus the need to sort.
+    my $auto;
     foreach my $dir ( keys %{ $conf->{automount} } ) {
-        $self->mount( $joot_name, $dir, $conf->{automount}->{$dir} );
+        my $absdir = Cwd::abs_path($dir);
+        if ( !$absdir ) {
+            WARN "$dir doesn't exist, not mounting";
+            next;
+        }
+        $auto->{$absdir} = $conf->{automount}->{$dir};
+    }
+
+    foreach my $dir ( sort keys %{$auto} ) {
+        $self->mount( $joot_name, $dir, $auto->{$dir} );
     }
 
     return;
@@ -326,20 +340,23 @@ sub create {
         run( bin("cp"), $file, "$mnt/$file" );
     }
 
-    $self->set_config(
-        $joot_name,
-        {
-            image     => $image->url(),
-            creator   => $ENV{SUDO_USER} || $ENV{USER},
-            ctime     => time(),
-            automount => {
-                "/proc" => {},
-                "/sys"  => {},
-                "/dev"  => {},
-            }
+    my $conf = {
+        image     => $image->url(),
+        creator   => $ENV{SUDO_USER} || $ENV{USER},
+        ctime     => time(),
+        automount => {
+            "/proc" => {},
+            "/sys"  => {},
+            "/dev"  => {},
         }
-    );
+    };
 
+    # not all systems use /dev/pts, so only add it if this system does
+    if ( -e '/dev/pts' ) {
+        $conf->{automount}->{'/dev/pts'} = {};
+    }
+
+    $self->set_config( $joot_name, $conf );
     return 1;
 }
 
