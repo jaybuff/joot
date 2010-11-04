@@ -170,8 +170,10 @@ sub mount {    ## no critic qw(Subroutines::RequireArgUnpacking)
         return $self->automount($joot_name);
     }
 
-    foreach my $dir (@dirs) {
-        my $target = "$mnt/$dir";
+    # if user passes in /.//foo and /foo/bar we need to
+    # mount /foo then /foo/bar
+    foreach my $dir ( sort map { Cwd::abs_path($_) } @dirs ) {
+        my $target = Cwd::abs_path("$mnt/$dir");
 
         if ( is_mounted($target) ) {
             DEBUG "$target is already mounted";
@@ -271,9 +273,12 @@ sub umount {    ## no critic qw(Subroutines::RequireArgUnpacking)
         return;
     }
 
-    foreach my $dir (@dirs) {
-        if ( is_mounted("$mnt/$dir") ) {
-            run( bin("umount"), "$mnt/$dir" );
+    # if user passes in /.//foo and /foo/bar we need to
+    # umount /foo/bar then /foo
+    foreach my $dir ( reverse sort map { Cwd::abs_path($_) } @dirs ) {
+        my $target = Cwd::abs_path("$mnt/$dir");
+        if ( is_mounted($target) ) {
+            run( bin("umount"), $target );
         }
         else {
             DEBUG "$dir isn't mounted in $joot_name";
