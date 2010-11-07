@@ -66,6 +66,8 @@ sub chroot {    ## no critic qw(Subroutines::ProhibitBuiltinHomonyms Subroutines
 
     my $mnt = $self->mount_point($joot_name);
     chroot($mnt);
+    die "Failed to chroot $mnt: $OS_ERROR\n" if $OS_ERROR;
+
     my ( $uid, $gid, $homedir, $shell ) = ( getpwnam($user) )[ 2, 3, 7, 8 ];
 
     # check that the user exists in the chroot
@@ -81,12 +83,19 @@ sub chroot {    ## no critic qw(Subroutines::ProhibitBuiltinHomonyms Subroutines
         WARN "Mounted home dir in $real_homedir, but chdir'ing to $homedir";
     }
     chdir($homedir);
+    die "Failed to chdir $homedir: $OS_ERROR\n" if $OS_ERROR;
 
     # set effective/real gid and uid to the uid/gid of the user we're
     # entering the chroot as
     # this is basically setuid/setgid
+    $EFFECTIVE_GROUP_ID = join( " ", $gid, get_gids( $user ) );
+    die "Failed to set effective gid: $OS_ERROR\n" if $OS_ERROR;
+
+    $REAL_GROUP_ID = $gid;
+    die "Failed to set real gid: $OS_ERROR\n" if $OS_ERROR;
+
     ( $REAL_USER_ID,  $EFFECTIVE_USER_ID )  = ( $uid, $uid );
-    ( $REAL_GROUP_ID, $EFFECTIVE_GROUP_ID ) = ( $gid, $gid );
+    die "Failed to setuid: $OS_ERROR\n" if $OS_ERROR;
 
     # clean up %ENV
     # set this env var so the user has a way to tell what joot they're in

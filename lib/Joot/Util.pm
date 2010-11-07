@@ -6,7 +6,8 @@ use warnings;
 our ( @EXPORT_OK, %EXPORT_TAGS );
 
 use base 'Exporter';
-my @standard = qw( config nbd_connect nbd_disconnect bin run slurp get_ua get_url mkpath rmpath is_mounted get_mounts );
+my @standard = qw( config nbd_connect nbd_disconnect bin run slurp get_ua
+  get_url mkpath rmpath is_mounted get_mounts get_gids );
 @EXPORT_OK = ( @standard, qw( is_disk_connected get_nbd_device sudo ) );
 %EXPORT_TAGS = ( standard => \@standard );
 
@@ -292,6 +293,35 @@ sub sudo {
         my @cmd = ( bin("sudo"), $cmd, @{$argv} );
         DEBUG "exec " . join " ", @cmd;
         exec(@cmd);
+    }
+}
+
+{
+    my %gids;
+
+    sub get_gids {
+        my $user = shift;
+        DEBUG("getting all gids for $user");
+
+        if ( !%gids ) {
+            setgrent();    # rewind the list
+            while ( my ( $gid, $members ) = ( getgrent() )[ 2, 3 ] ) {
+                DEBUG("$gid -> $members");
+                foreach my $member ( split /\s+/, $members ) {
+                    push @{ $gids{$member} }, $gid;
+                }
+            }
+        }
+
+        my $gid = ( getpwnam($user) )[3];
+        die "Failed to getpwnam: $!\n" if $!;
+
+        if ( $gids{$user} ) {
+            return ( $gid, @{ $gids{$user} } );
+        }
+        else {
+            return $gid;
+        }
     }
 }
 
