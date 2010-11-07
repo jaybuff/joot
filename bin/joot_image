@@ -4,7 +4,8 @@ use strict;
 use warnings;
 
 use Joot::Util qw( mkpath bin run sudo nbd_connect nbd_disconnect );
-use Getopt::Long;
+use Getopt::Long ();
+use File::Spec ();
 use Log::Log4perl qw(:easy);
 Log::Log4perl->easy_init($DEBUG);
 
@@ -30,6 +31,9 @@ elsif ( $options{umount} ) {
 }
 elsif ( $options{create} ) {
     my $size = shift || "10G";
+
+    my $image_dir = ( File::Spec->splitpath( $image ) )[1];
+    mkpath( $image_dir );
     run( bin("qemu-img"), qw( create -f qcow2 ), $image, $size );
     my $device = nbd_connect($image);
     run( bin("mkfs.ext3"), qw( -b 4096 ), $device );
