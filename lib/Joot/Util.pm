@@ -289,7 +289,7 @@ sub sudo {
 
     # escalate privileges to root, unless the user is already root
     if ( $< != 0 ) {
-        my @cmd = ( bin("sudo"), "-E", $cmd, @{$argv} );
+        my @cmd = ( bin("sudo"), $cmd, @{$argv} );
         DEBUG "exec " . join " ", @cmd;
         exec(@cmd);
     }

@@ -3,10 +3,6 @@
 use strict;
 use warnings;
 
-# ugg, sudo strips PERL5LIB env, so we do this here so we can use the dev copy
-use FindBin ();
-use if $ENV{JOOT_DEVELOPER}, lib => "$FindBin::Bin/../lib";
-
 use Joot::Util qw( mkpath bin run sudo nbd_connect nbd_disconnect );
 use Getopt::Long;
 use Log::Log4perl qw(:easy);

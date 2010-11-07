@@ -51,7 +51,7 @@ sub chroot {    ## no critic qw(Subroutines::ProhibitBuiltinHomonyms Subroutines
     }
 
     # allow the user to specify the user to enter the chroot as
-    my $user = $args->{user} || getpwuid($REAL_USER_ID);
+    my $user = $args->{user} || ( $REAL_USER_ID ? getpwuid($REAL_USER_ID) : $ENV{SUDO_USER} );
 
     my $real_homedir = ( getpwnam($user) )[7];
     if ( !$args->{'no-home'} ) {

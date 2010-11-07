@@ -3,10 +3,6 @@
 use strict;
 use warnings;
 
-# ugg, sudo strips PERL5LIB env, so we do this here so we can use the dev copy
-use FindBin ();
-use if $ENV{JOOT_DEVELOPER}, lib => "$FindBin::Bin/../lib";
-
 use English '-no_match_vars';
 use Joot ();
 use Joot::Util qw(bin sudo);
