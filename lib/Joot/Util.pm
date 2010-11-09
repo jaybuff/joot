@@ -306,7 +306,6 @@ sub sudo {
         if ( !%gids ) {
             setgrent();    # rewind the list
             while ( my ( $gid, $members ) = ( getgrent() )[ 2, 3 ] ) {
-                DEBUG("$gid -> $members");
                 foreach my $member ( split /\s+/, $members ) {
                     push @{ $gids{$member} }, $gid;
                 }
