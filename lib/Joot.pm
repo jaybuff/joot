@@ -66,7 +66,6 @@ sub chroot {    ## no critic qw(Subroutines::ProhibitBuiltinHomonyms Subroutines
 
     my $mnt = $self->mount_point($joot_name);
     chroot($mnt);
-    die "Failed to chroot $mnt: $OS_ERROR\n" if $OS_ERROR;
 
     my ( $uid, $gid, $homedir, $shell ) = ( getpwnam($user) )[ 2, 3, 7, 8 ];
 
