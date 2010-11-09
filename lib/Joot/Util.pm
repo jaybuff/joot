@@ -7,7 +7,7 @@ our ( @EXPORT_OK, %EXPORT_TAGS );
 
 use base 'Exporter';
 my @standard = qw( config nbd_connect nbd_disconnect bin run slurp get_ua
-  get_url mkpath rmpath is_mounted get_mounts get_gids );
+  get_url mkpath rmpath is_mounted get_mounts get_gids proxy_socket );
 @EXPORT_OK = ( @standard, qw( is_disk_connected get_nbd_device sudo ) );
 %EXPORT_TAGS = ( standard => \@standard );
 
@@ -290,7 +290,15 @@ sub sudo {
 
     # escalate privileges to root, unless the user is already root
     if ( $< != 0 ) {
-        my @cmd = ( bin("sudo"), $cmd, @{$argv} );
+
+        # preserve these env variables
+        my @env_cmd = bin("env");
+        foreach my $envvar ( @{ config("pass_thru_env") } ) {
+            if ( $ENV{$envvar} ) {
+                push @env_cmd, "$envvar=$ENV{$envvar}";
+            }
+        }
+        my @cmd = ( bin("sudo"), @env_cmd, $cmd, @{$argv} );
         DEBUG "exec " . join " ", @cmd;
         exec(@cmd);
     }
@@ -306,7 +314,7 @@ sub sudo {
         if ( !%gids ) {
             setgrent();    # rewind the list
             while ( my ( $gid, $members ) = ( getgrent() )[ 2, 3 ] ) {
-                foreach my $member ( split /\s+/, $members ) {
+                foreach my $member ( split /\s+/x, $members ) {
                     push @{ $gids{$member} }, $gid;
                 }
             }
@@ -322,6 +330,48 @@ sub sudo {
             return $gid;
         }
     }
+}
+
+# warning: the caller is responsible for dealing with the the child (either
+# kill it or waitpid)
+sub proxy_socket {
+    my $src   = shift;
+    my $dest  = shift;
+    my $owner = shift;
+
+    my $dir = ( File::Spec->splitpath($dest) )[1];
+    mkpath($dir);
+
+
+    my $pid = fork();
+    if ( !defined $pid ) {
+        die "failed to fork: $!\n";
+    }
+    elsif ( $pid == 0 ) {
+        my @cmd = ( bin("socat"), "UNIX-CONNECT:$src", "UNIX-LISTEN:$dest,fork" );
+        DEBUG "exec " . join " ", @cmd;
+        exec(@cmd);
+    }
+
+    local $SIG{ALRM} = sub { die "socat failed to create socket\n"; };
+    alarm(5);
+    while (1) {
+        if ( -S $dest ) { 
+            alarm(0);    # cancel alarm
+            last;
+        }
+    }
+
+    if ($owner) {
+        my ( $uid, $gid ) = ( getpwnam($owner) )[ 2, 3 ]
+          or die "$owner not in passwd file\n";
+        chown $uid, $gid, $dest;
+        if ( $! ) {
+            die "Failed to chown $dest: $!\n";
+        }
+    }
+
+    return $pid;
 }
 
 1;

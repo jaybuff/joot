@@ -1,4 +1,3 @@
 turn on perl taint mode 
 disallow creating a joot inside a joot (causes problems with mount points, sockets, etc)
 make the qcow disk size something bigger than 10GB when it's installed (option to --create)
-automatically link common sockets (ssh, x11, etc) into joot 

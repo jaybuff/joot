@@ -22,13 +22,12 @@ Prereqs
 On Debian, you'll need to install these packages:
 export DEBIAN_FRONTEND=noninteractive
 sudo apt-get install mount sudo qemu-kvm libjson-perl liblog-log4perl-perl \
-libwww-perl perl-modules  -y
+libwww-perl perl-modules socat -y
 
 # for development only 
 sudo apt-get install libtest-perl-critic-perl libtest-exception-perl \
 libtest-pod-perl -y
-export PERL5LIB=~/joot/lib
-alias joot="sudo PERL5LIB=$PERL5LIB ~/joot/bin/joot"
+# be sure to add PERL5LIB to pass_thru_env in config file 
 
 linux kernel 2.6.26 for nbd support (ubuntu release intrepid ibex or later)
 When you mount a joot it uses a /dev/nbdX device.  

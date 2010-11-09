@@ -63,61 +63,83 @@ sub chroot {    ## no critic qw(Subroutines::ProhibitBuiltinHomonyms Subroutines
     }
 
     $self->automount($joot_name);
+    my $mnt = Cwd::abs_path( $self->mount_point($joot_name) );
 
-    my $mnt = $self->mount_point($joot_name);
-    chroot($mnt);
-
-    my ( $uid, $gid, $homedir, $shell ) = ( getpwnam($user) )[ 2, 3, 7, 8 ];
-
-    # check that the user exists in the chroot
-    if ( !defined $uid ) {
-        FATAL "User $user doesn't exist inside joot '$joot_name'";
-        FATAL "Try running \"$PROGRAM_NAME $joot_name --user root --cmd 'adduser $user'\" to create the account";
-        die "\n";
+    # special handling of ssh socket
+    my @kill_pids;
+    if ( $ENV{SSH_AUTH_SOCK} && -S $ENV{SSH_AUTH_SOCK} ) { 
+        push @kill_pids, proxy_socket( $ENV{SSH_AUTH_SOCK}, "$mnt/$ENV{SSH_AUTH_SOCK}", $user );
     }
 
-    # chdir to user's $homedir which we (may have) mounted above
-    if ( !$args->{'no-home'} && $real_homedir ne $homedir ) {
-        WARN "${user}'s home dir in chroot is different than home dir outside of chroot.";
-        WARN "Mounted home dir in $real_homedir, but chdir'ing to $homedir";
+    # we fork here so we can clean up (umount, kill tunnels, etc) after cmd or 
+    # shell is done 
+    my $pid = fork();
+    if ( !defined $pid ) { 
+        die "Failed to fork: $!\n";
+    } elsif ( $pid == 0 ) {
+        chroot($mnt);
+        die "Failed to chroot $mnt: $OS_ERROR\n" if $OS_ERROR;
+
+        my ( $uid, $gid, $homedir, $shell ) = ( getpwnam($user) )[ 2, 3, 7, 8 ];
+
+        # check that the user exists in the chroot
+        if ( !defined $uid ) {
+            FATAL "User $user doesn't exist inside joot '$joot_name'";
+            FATAL "Try running \"$PROGRAM_NAME $joot_name --user root --cmd 'adduser $user'\" to create the account";
+            die "\n";
+        }
+
+        # chdir to user's $homedir which we (may have) mounted above
+        if ( !$args->{'no-home'} && $real_homedir ne $homedir ) {
+            WARN "${user}'s home dir in chroot is different than home dir outside of chroot.";
+            WARN "Mounted home dir in $real_homedir, but chdir'ing to $homedir";
+        }
+        chdir($homedir);
+        die "Failed to chdir $homedir: $OS_ERROR\n" if $OS_ERROR;
+
+        # set effective/real gid and uid to the uid/gid of the user we're
+        # entering the chroot as
+        # this is basically setuid/setgid
+        $EFFECTIVE_GROUP_ID = join( " ", $gid, get_gids( $user ) );
+        die "Failed to set effective gid: $OS_ERROR\n" if $OS_ERROR;
+
+        $REAL_GROUP_ID = $gid;
+        die "Failed to set real gid: $OS_ERROR\n" if $OS_ERROR;
+
+        ( $REAL_USER_ID,  $EFFECTIVE_USER_ID )  = ( $uid, $uid );
+        die "Failed to setuid: $OS_ERROR\n" if $OS_ERROR;
+
+        # clean up %ENV
+        # set this env var so the user has a way to tell what joot they're in
+        $ENV{JOOT_NAME} = $joot_name;
+        foreach my $env_var (qw( SUDO_COMMAND SUDO_GID SUDO_UID SUDO_USER )) {
+            delete $ENV{$env_var};
+        }
+        $ENV{LOGNAME} = $ENV{USERNAME} = $ENV{USER} = $user;
+        $ENV{HOME} = $homedir;
+        
+        # the user may have passed in this command to run instead of their shell
+        if ( my $cmd = $args->{cmd} ) {
+            exec($cmd) or die "failed to exec $cmd: $!\n";
+        }
+
+        # start the user's shell inside this chroot
+        if ( !-x $shell ) {
+            FATAL "can't execute $shell.  use \"$PROGRAM_NAME $joot_name --cmd 'chsh /bin/sh'\" to fix";
+            die "\n";
+        }
+
+        #TODO make the user's shell a login shell so .bashrc, etc are executed
+        exec($shell) or die "Failed to exec shell $shell: $!\n";
+    } 
+
+    waitpid( $pid, 0 );
+    if ( @kill_pids ) { 
+        DEBUG "killing pids: " . join " ", @kill_pids;
+        kill( "TERM", @kill_pids );
     }
-    chdir($homedir);
-    die "Failed to chdir $homedir: $OS_ERROR\n" if $OS_ERROR;
-
-    # set effective/real gid and uid to the uid/gid of the user we're
-    # entering the chroot as
-    # this is basically setuid/setgid
-    $EFFECTIVE_GROUP_ID = join( " ", $gid, get_gids( $user ) );
-    die "Failed to set effective gid: $OS_ERROR\n" if $OS_ERROR;
-
-    $REAL_GROUP_ID = $gid;
-    die "Failed to set real gid: $OS_ERROR\n" if $OS_ERROR;
-
-    ( $REAL_USER_ID,  $EFFECTIVE_USER_ID )  = ( $uid, $uid );
-    die "Failed to setuid: $OS_ERROR\n" if $OS_ERROR;
-
-    # clean up %ENV
-    # set this env var so the user has a way to tell what joot they're in
-    $ENV{JOOT_NAME} = $joot_name;
-    foreach my $env_var (qw( SUDO_COMMAND SUDO_GID SUDO_UID SUDO_USER )) {
-        delete $ENV{$env_var};
-    }
-    $ENV{LOGNAME} = $ENV{USERNAME} = $ENV{USER} = $user;
-    $ENV{HOME} = $homedir;
-
-    # the user may have passed in this command to run instead of their shell
-    if ( my $cmd = $args->{cmd} ) {
-        exec($cmd) or die "failed to exec $cmd: $!\n";
-    }
-
-    # start the user's shell inside this chroot
-    if ( !-x $shell ) {
-        FATAL "can't execute $shell.  use \"$PROGRAM_NAME $joot_name --cmd 'chsh /bin/sh'\" to fix";
-        die "\n";
-    }
-
-    #TODO make the user's shell a login shell so .bashrc, etc are executed
-    exec($shell) or die "Failed to exec shell $shell: $!\n";
+     
+    return;
 }
 
 sub get_config {
