@@ -7,11 +7,12 @@ our ( @EXPORT_OK, %EXPORT_TAGS );
 
 use base 'Exporter';
 my @standard = qw( config nbd_connect nbd_disconnect bin run slurp get_ua
-  get_url mkpath rmpath is_mounted get_mounts get_gids proxy_socket );
+  get_url mkpath rmpath is_mounted get_mounts get_gids proxy_socket drop_root );
 @EXPORT_OK = ( @standard, qw( is_disk_connected get_nbd_device sudo ) );
 %EXPORT_TAGS = ( standard => \@standard );
 
-use Cwd        ();
+use Cwd ();
+use English '-no_match_vars';
 use File::Path ();
 use IPC::Cmd   ();
 use JSON       ();
@@ -188,7 +189,7 @@ sub nbd_connect {
     my $sock_dir = config("sockets_dir");
     $sock_dir =~ s#/*$##x;    # remove trailing slashes
     if ( !-d $sock_dir ) {
-        run( bin("mkdir"), "-p", $sock_dir );
+        mkpath($sock_dir);
     }
 
     my $device = get_nbd_device();
@@ -248,7 +249,7 @@ sub slurp {
     my $file = shift;
     return do {
         local $/ = undef;
-        open my $fh, '<', $file or die "can't read contents of $file: $!\n";
+        open my $fh, '<', $file or die "can't read contents of $file: $OS_ERROR\n";
         my $content = <$fh>;
         close $fh;
         $content;
@@ -304,6 +305,26 @@ sub sudo {
     }
 }
 
+# set effective/real gid and uid to the uid/gid of the user we're passed
+# this is basically setuid/setgid
+sub drop_root {
+    my $user = shift;
+
+    my ( $uid, $gid ) = ( getpwnam($user) )[ 2, 3 ];
+    die "Failed to getpwname( $user ): $OS_ERROR\n" if $OS_ERROR;
+
+    $EFFECTIVE_GROUP_ID = join( " ", $gid, get_gids($user) );
+    die "Failed to set effective gid: $OS_ERROR\n" if $OS_ERROR;
+
+    $REAL_GROUP_ID = $gid;
+    die "Failed to set real gid: $OS_ERROR\n" if $OS_ERROR;
+
+    ( $REAL_USER_ID, $EFFECTIVE_USER_ID ) = ( $uid, $uid );
+    die "Failed to setuid: $OS_ERROR\n" if $OS_ERROR;
+
+    return;
+}
+
 {
     my %gids;
 
@@ -321,7 +342,7 @@ sub sudo {
         }
 
         my $gid = ( getpwnam($user) )[3];
-        die "Failed to getpwnam: $!\n" if $!;
+        die "Failed to getpwnam: $OS_ERROR\n" if $OS_ERROR;
 
         if ( $gids{$user} ) {
             return ( $gid, @{ $gids{$user} } );
@@ -342,10 +363,9 @@ sub proxy_socket {
     my $dir = ( File::Spec->splitpath($dest) )[1];
     mkpath($dir);
 
-
     my $pid = fork();
     if ( !defined $pid ) {
-        die "failed to fork: $!\n";
+        die "failed to fork: $OS_ERROR\n";
     }
     elsif ( $pid == 0 ) {
         my @cmd = ( bin("socat"), "UNIX-CONNECT:$src", "UNIX-LISTEN:$dest,fork" );
@@ -356,18 +376,9 @@ sub proxy_socket {
     local $SIG{ALRM} = sub { die "socat failed to create socket\n"; };
     alarm(5);
     while (1) {
-        if ( -S $dest ) { 
+        if ( -S $dest ) {
             alarm(0);    # cancel alarm
             last;
-        }
-    }
-
-    if ($owner) {
-        my ( $uid, $gid ) = ( getpwnam($owner) )[ 2, 3 ]
-          or die "$owner not in passwd file\n";
-        chown $uid, $gid, $dest;
-        if ( $! ) {
-            die "Failed to chown $dest: $!\n";
         }
     }
 

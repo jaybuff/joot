@@ -53,12 +53,17 @@ sub chroot {    ## no critic qw(Subroutines::ProhibitBuiltinHomonyms Subroutines
     # allow the user to specify the user to enter the chroot as
     my $user = $args->{user} || ( $REAL_USER_ID ? getpwuid($REAL_USER_ID) : $ENV{SUDO_USER} );
 
-    my $real_homedir = ( getpwnam($user) )[7];
+    # if the user doesn't exist in the real root that's okay
+    my $real_homedir = ( getpwnam($user) )[7] || "";
+
     if ( !$args->{'no-home'} ) {
         my $mount_args = $args->{'ro-home'} ? { 'read-only' => 1 } : {};
         $self->mount( $joot_name, $real_homedir, $mount_args );
     }
     else {
+
+        # if it happens to already be mounted, unmount it
+        # TODO what if someone is using it in another instance?
         $self->umount( $joot_name, $real_homedir );
     }
 
@@ -66,58 +71,59 @@ sub chroot {    ## no critic qw(Subroutines::ProhibitBuiltinHomonyms Subroutines
     my $mnt = Cwd::abs_path( $self->mount_point($joot_name) );
 
     # special handling of ssh socket
-    my @kill_pids;
-    if ( $ENV{SSH_AUTH_SOCK} && -S $ENV{SSH_AUTH_SOCK} ) { 
-        push @kill_pids, proxy_socket( $ENV{SSH_AUTH_SOCK}, "$mnt/$ENV{SSH_AUTH_SOCK}", $user );
+    my ( @kill_pids, @to_chown );
+    if ( $ENV{SSH_AUTH_SOCK} && -S $ENV{SSH_AUTH_SOCK} ) {
+
+        # we don't know the uid for $user until we chroot, so defer this chown
+        push @to_chown, "$mnt/$ENV{SSH_AUTH_SOCK}";
+        push @kill_pids, proxy_socket( $ENV{SSH_AUTH_SOCK}, "$mnt/$ENV{SSH_AUTH_SOCK}" );
     }
 
-    # we fork here so we can clean up (umount, kill tunnels, etc) after cmd or 
-    # shell is done 
-    my $pid = fork();
-    if ( !defined $pid ) { 
-        die "Failed to fork: $!\n";
-    } elsif ( $pid == 0 ) {
-        chroot($mnt);
-        die "Failed to chroot $mnt: $OS_ERROR\n" if $OS_ERROR;
+    # we'll run this after the command (or shell) exits
+    my $clean_up;
+    if (@kill_pids) {
+        $clean_up = sub {
+            return if ( !@kill_pids );
+            my $pid_list = join " ", @kill_pids;
+            DEBUG "kill TERM $pid_list";
+            kill( "TERM", @kill_pids ) or die "Failed to kill TERM $pid_list: $OS_ERROR\n";
+            @kill_pids = ();    # don't kill them twice
+        };
 
-        my ( $uid, $gid, $homedir, $shell ) = ( getpwnam($user) )[ 2, 3, 7, 8 ];
+        # if we die we need to clean up
+        $SIG{__DIE__} = $clean_up;
+    }
 
-        # check that the user exists in the chroot
-        if ( !defined $uid ) {
-            FATAL "User $user doesn't exist inside joot '$joot_name'";
-            FATAL "Try running \"$PROGRAM_NAME $joot_name --user root --cmd 'adduser $user'\" to create the account";
-            die "\n";
-        }
+    chroot($mnt) or die "Failed to chroot $mnt: $OS_ERROR\n";
 
-        # chdir to user's $homedir which we (may have) mounted above
-        if ( !$args->{'no-home'} && $real_homedir ne $homedir ) {
-            WARN "${user}'s home dir in chroot is different than home dir outside of chroot.";
-            WARN "Mounted home dir in $real_homedir, but chdir'ing to $homedir";
-        }
-        chdir($homedir);
-        die "Failed to chdir $homedir: $OS_ERROR\n" if $OS_ERROR;
+    my ( $uid, $gid, $homedir, $shell ) = ( getpwnam($user) )[ 2, 3, 7, 8 ] or do {
+        DEBUG "getpwnam( $user ) failed: $OS_ERROR";
+        FATAL "User $user doesn't exist inside joot '$joot_name'";
+        FATAL "Try running \"$PROGRAM_NAME $joot_name --user root --cmd 'adduser $user'\" to create the account";
+        die "\n";
+    };
 
-        # set effective/real gid and uid to the uid/gid of the user we're
-        # entering the chroot as
-        # this is basically setuid/setgid
-        $EFFECTIVE_GROUP_ID = join( " ", $gid, get_gids( $user ) );
-        die "Failed to set effective gid: $OS_ERROR\n" if $OS_ERROR;
+    chown( $uid, $gid, @to_chown ) or die "Failed to chown " . join( ", ", @to_chown ) . ": $OS_ERROR\n";
 
-        $REAL_GROUP_ID = $gid;
-        die "Failed to set real gid: $OS_ERROR\n" if $OS_ERROR;
+    # chdir to user's $homedir which we (may have) mounted above
+    if ( !$args->{'no-home'} && $real_homedir && $real_homedir ne $homedir ) {
+        WARN "${user}'s home dir in chroot is different than home dir outside of chroot.";
+        WARN "Mounted home dir in $real_homedir, but chdir'ing to $homedir";
+    }
+    chdir($homedir) or die "Failed to chdir $homedir: $OS_ERROR\n";
 
-        ( $REAL_USER_ID,  $EFFECTIVE_USER_ID )  = ( $uid, $uid );
-        die "Failed to setuid: $OS_ERROR\n" if $OS_ERROR;
+    # clean up %ENV
+    # set this env var so the user has a way to tell what joot they're in
+    $ENV{JOOT_NAME} = $joot_name;
+    foreach my $env_var (qw( SUDO_COMMAND SUDO_GID SUDO_UID SUDO_USER )) {
+        delete $ENV{$env_var};
+    }
+    $ENV{LOGNAME} = $ENV{USERNAME} = $ENV{USER} = $user;
+    $ENV{HOME} = $homedir;
 
-        # clean up %ENV
-        # set this env var so the user has a way to tell what joot they're in
-        $ENV{JOOT_NAME} = $joot_name;
-        foreach my $env_var (qw( SUDO_COMMAND SUDO_GID SUDO_UID SUDO_USER )) {
-            delete $ENV{$env_var};
-        }
-        $ENV{LOGNAME} = $ENV{USERNAME} = $ENV{USER} = $user;
-        $ENV{HOME} = $homedir;
-        
+    my $exec_cmd = sub {
+        drop_root($user);
+
         # the user may have passed in this command to run instead of their shell
         if ( my $cmd = $args->{cmd} ) {
             exec($cmd) or die "failed to exec $cmd: $!\n";
@@ -131,14 +137,26 @@ sub chroot {    ## no critic qw(Subroutines::ProhibitBuiltinHomonyms Subroutines
 
         #TODO make the user's shell a login shell so .bashrc, etc are executed
         exec($shell) or die "Failed to exec shell $shell: $!\n";
-    } 
+    };
 
-    waitpid( $pid, 0 );
-    if ( @kill_pids ) { 
-        DEBUG "killing pids: " . join " ", @kill_pids;
-        kill( "TERM", @kill_pids );
+    # we fork here so we can clean up when the shell is done
+    # if there is no clean up work, we just exec
+    if ($clean_up) {
+        my $pid = fork();
+        if ( !defined $pid ) {
+            die "Failed to fork: $!\n";
+        }
+        elsif ( $pid == 0 ) {
+            &{$exec_cmd}();
+        }
+
+        waitpid( $pid, 0 );
+        &{$clean_up}();
+
+        return;
     }
-     
+
+    &{$exec_cmd}();
     return;
 }
 
@@ -372,7 +390,7 @@ sub create {
             WARN "$file doesn't exist.  not copying into joot";
             next;
         }
-        run( bin("cp"), $file, "$mnt/$file" );
+        File::Copy::copy( $file, "$mnt/$file" );
     }
 
     my $conf = {
@@ -543,6 +561,12 @@ This application depends on these binaries:
 
     qemu-nbd
     qemu-img 
+    socat
+    sudo
+    env 
+    mount
+    umount
+    ps
 
 =head1 CONFIGURATION AND ENVIRONMENT
 
