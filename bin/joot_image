@@ -38,6 +38,8 @@ elsif ( $options{create} ) {
     my $device = nbd_connect($image);
     run( bin("mkfs.ext3"), qw( -b 4096 ), $device );
     nbd_disconnect($device);
+} else { 
+    die usage("missing command\n") . "\n";
 }
 
 sub usage {
