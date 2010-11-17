@@ -39,19 +39,19 @@ CentOS:
 http://geek.co.il/wp/2010/03/14/how-to-build-a-chroot-jail-environment-for-centos
 
 Ubuntu/Debian:
-export image_name=debian-5.0-i386-`date +%Y%m%d`
+export image_name=ubuntu-10.10-i386
 export image_file=~/images/$image_name.qcow2
 joot_image --create $image_file --size 10G
 joot_image --mount $image_file /mnt/$image_name
 sudo apt-get install debootstrap
-sudo debootstrap --variant=buildd --arch i386 lucid \
+sudo debootstrap --variant=buildd --arch i386 maverick \
     /mnt/$image_name/ http://archive.ubuntu.com/ubuntu/
-sudo chroot /mnt/$image_name bash -c  "apt-get install -y --force-yes sudo language-pack-en vim ssh man && apt-get clean"
+sudo env LANG=C chroot /mnt/$image_name bash -c  "apt-get install -y \
+    --force-yes sudo language-pack-en vim ssh man && apt-get clean"
 joot_image --umount $image_file
 sudo rmdir /mnt/$image_name
 
-Eventually I hope to publish a collection of images a la stacklet.com (but 
-without the paywall).
+The default config file references a collection of images at getjoot.org
 
 Configuration
 -------------
