@@ -8,6 +8,7 @@ $VERSION = "0.0.1";
 
 use English '-no_match_vars';
 use File::Copy  ();
+use File::Spec  ();
 use Joot::Image ();
 use Joot::Util ':standard';
 use JSON ();
@@ -75,7 +76,7 @@ sub chroot {    ## no critic qw(Subroutines::ProhibitBuiltinHomonyms Subroutines
     if ( $ENV{SSH_AUTH_SOCK} && -S $ENV{SSH_AUTH_SOCK} ) {
 
         # we don't know the uid for $user until we chroot, so defer this chown
-        push @to_chown, $ENV{SSH_AUTH_SOCK}; # relative to the chroot
+        push @to_chown, $ENV{SSH_AUTH_SOCK};                                                # relative to the chroot
         push @kill_pids, proxy_socket( $ENV{SSH_AUTH_SOCK}, "$mnt/$ENV{SSH_AUTH_SOCK}" );
     }
 
@@ -87,7 +88,7 @@ sub chroot {    ## no critic qw(Subroutines::ProhibitBuiltinHomonyms Subroutines
             my $pid_list = join " ", @kill_pids;
             DEBUG "kill TERM $pid_list";
             kill( "TERM", @kill_pids ) or die "Failed to kill TERM $pid_list: $OS_ERROR\n";
-            @kill_pids = ();    # don't kill them twice
+            @kill_pids = ();                                                                # don't kill them twice
         };
 
         # if we die we need to clean up
@@ -135,8 +136,11 @@ sub chroot {    ## no critic qw(Subroutines::ProhibitBuiltinHomonyms Subroutines
             die "\n";
         }
 
-        #TODO make the user's shell a login shell so .bashrc, etc are executed
-        exec($shell) or die "Failed to exec shell $shell: $!\n";
+        my $shell_name = ( File::Spec->splitpath($shell) )[2];
+        DEBUG("exec $shell as login shell");
+
+        # see perldoc -f exec for explanation of this rarely used syntax
+        exec $shell "-$shell_name" or die "Failed to exec shell $shell: $!\n";
     };
 
     # we fork here so we can clean up when the shell is done
