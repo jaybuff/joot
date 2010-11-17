@@ -76,8 +76,13 @@ sub chroot {    ## no critic qw(Subroutines::ProhibitBuiltinHomonyms Subroutines
     if ( $ENV{SSH_AUTH_SOCK} && -S $ENV{SSH_AUTH_SOCK} ) {
 
         # we don't know the uid for $user until we chroot, so defer this chown
-        push @to_chown, $ENV{SSH_AUTH_SOCK};                                                # relative to the chroot
-        push @kill_pids, proxy_socket( $ENV{SSH_AUTH_SOCK}, "$mnt/$ENV{SSH_AUTH_SOCK}" );
+        eval {
+            push @kill_pids, proxy_socket( $ENV{SSH_AUTH_SOCK}, "$mnt/$ENV{SSH_AUTH_SOCK}" );
+            push @to_chown, $ENV{SSH_AUTH_SOCK};    # relative to the chroot
+            1;
+        } or do {
+            WARN "Failed to proxy ssh socket: $@";
+        };
     }
 
     # we'll run this after the command (or shell) exits
@@ -88,7 +93,7 @@ sub chroot {    ## no critic qw(Subroutines::ProhibitBuiltinHomonyms Subroutines
             my $pid_list = join " ", @kill_pids;
             DEBUG "kill TERM $pid_list";
             kill( "TERM", @kill_pids ) or die "Failed to kill TERM $pid_list: $OS_ERROR\n";
-            @kill_pids = ();                                                                # don't kill them twice
+            @kill_pids = ();    # don't kill them twice
         };
 
         # if we die we need to clean up
@@ -104,7 +109,9 @@ sub chroot {    ## no critic qw(Subroutines::ProhibitBuiltinHomonyms Subroutines
         die "\n";
     };
 
-    chown( $uid, $gid, @to_chown ) or die "Failed to chown " . join( ", ", @to_chown ) . ": $OS_ERROR\n";
+    if ( @to_chown ) {
+        chown( $uid, $gid, @to_chown ) or die "Failed to chown " . join( ", ", @to_chown ) . ": $OS_ERROR\n";
+    }
 
     # chdir to user's $homedir which we (may have) mounted above
     if ( !$args->{'no-home'} && $real_homedir && $real_homedir ne $homedir ) {

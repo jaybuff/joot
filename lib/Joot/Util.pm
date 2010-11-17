@@ -358,17 +358,17 @@ sub drop_root {
 sub proxy_socket {
     my $src   = shift;
     my $dest  = shift;
-    my $owner = shift;
 
     my $dir = ( File::Spec->splitpath($dest) )[1];
     mkpath($dir);
 
+    # build the command before we fork because bin() might throw
+    my @cmd = ( bin("socat"), "UNIX-CONNECT:$src", "UNIX-LISTEN:$dest,fork" );
     my $pid = fork();
     if ( !defined $pid ) {
         die "failed to fork: $OS_ERROR\n";
     }
     elsif ( $pid == 0 ) {
-        my @cmd = ( bin("socat"), "UNIX-CONNECT:$src", "UNIX-LISTEN:$dest,fork" );
         DEBUG "exec " . join " ", @cmd;
         exec(@cmd);
     }
