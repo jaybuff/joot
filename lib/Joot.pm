@@ -75,7 +75,7 @@ sub chroot {    ## no critic qw(Subroutines::ProhibitBuiltinHomonyms Subroutines
     if ( $ENV{SSH_AUTH_SOCK} && -S $ENV{SSH_AUTH_SOCK} ) {
 
         # we don't know the uid for $user until we chroot, so defer this chown
-        push @to_chown, "$mnt/$ENV{SSH_AUTH_SOCK}";
+        push @to_chown, $ENV{SSH_AUTH_SOCK}; # relative to the chroot
         push @kill_pids, proxy_socket( $ENV{SSH_AUTH_SOCK}, "$mnt/$ENV{SSH_AUTH_SOCK}" );
     }
 
