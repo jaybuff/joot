@@ -36,7 +36,7 @@ elsif ( $options{create} ) {
     mkpath( $image_dir );
     run( bin("qemu-img"), qw( create -f qcow2 ), $image, $size );
     my $device = nbd_connect($image);
-    run( bin("mkfs.ext3"), qw( -b 4096 ), $device );
+    run( bin("mkfs.ext2"), qw( -b 4096 ), $device );
     nbd_disconnect($device);
 } else { 
     die usage("missing command\n") . "\n";
