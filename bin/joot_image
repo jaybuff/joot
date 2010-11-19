@@ -51,3 +51,16 @@ ${mesg}Usage:
     $0 --umount <file>
 EOF
 }
+
+__END__
+
+=head1 NAME
+
+joot_image - Utility to build images for joot
+
+=head1 SYNOPSIS
+
+    Usage:
+        joot_image --create <image file> [--size <size>]
+        joot_image --mount <file> <mount point>
+        joot_image --umount <file>

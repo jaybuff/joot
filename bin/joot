@@ -145,3 +145,26 @@ Global options:
     --help
 EOM
 }
+
+__END__
+
+=head1 NAME
+
+joot - utility to manage disk images and chroots to provide you with quick clean room environments
+
+=head1 SYNOPSIS
+
+    Usage: 
+        joot <joot name> [--user <user>] [--cmd <cmd>] [--no-home] [--ro-home]
+        joot --create <name> <image>
+        joot --images 
+        joot --list 
+        joot --delete <name> [<name> ...]
+        joot --rename <old name> <new name>
+        joot --mount <name> [--read-only] [--always] [<dir> ...]
+        joot --umount <name> [<dir> ...] 
+
+    Global options:
+        --verbose 
+        --version
+        --help
