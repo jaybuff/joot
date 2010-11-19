@@ -1,6 +1,8 @@
 bin/joot
 bin/joot_image
 Build.PL
+debian/changelog
+debian/packages
 joot.cfg
 lib/Joot.pm
 lib/Joot/Image.pm
