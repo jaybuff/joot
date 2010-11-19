@@ -8,12 +8,13 @@ Standards-Version: 3.7.2
 Bugs: https://github.com/jaybuff/joot/issues
 Vcs-Browser: https://github.com/jaybuff/joot
 Vcs-Git: git@github.com:jaybuff/joot.git
+Upstream-Source: https://github.com/jaybuff/joot
 Homepage: http://getjoot.org
-Description: Joot - chroot management utility
+Description: chroot management utility
  Joot is a utility that manages disk images and chroots to provide 
  you with quick clean room environments for development, testing and package 
  management. 
-Copyright: Apache
+Copyright: Apache-2.0
  Copyright 2010 Jay Buffington
 Build-Depends: perl, libtest-perl-critic-perl, libtest-exception-perl, libtest-pod-perl
 Major-Changes:
@@ -27,9 +28,9 @@ Clean: sh
 
 Package: joot
 Architecture: any
-Depends: procps, coreutils, perl, mount, sudo, qemu-kvm, libjson-perl, liblog-log4perl-perl, libwww-perl, perl-modules, socat
-Description: Joot - chroot management utility
+Depends: procps (>= 3.2), coreutils (>= 5), perl5, mount (>= 2), sudo, qemu-kvm, libjson-perl, liblog-log4perl-perl, libwww-perl, perl-modules, socat
+Description: chroot management utility
  . 
 Install: sh
  ./Build.PL
- ./Build install --destdir $ROOT
+ ./Build install --destdir $ROOT --installdirs vendor
