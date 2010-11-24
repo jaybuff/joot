@@ -4,10 +4,10 @@ Source: joot
 Section: utils
 Priority: extra
 Maintainer: Jay Buffington <jaybuffington@gmail.com>
-Standards-Version: 3.7.2
+Standards-Version: 3.8.4
 Bugs: https://github.com/jaybuff/joot/issues
 Vcs-Browser: https://github.com/jaybuff/joot
-Vcs-Git: git@github.com:jaybuff/joot.git
+Vcs-Git: https://jaybuff@github.com/jaybuff/joot.git
 Upstream-Source: https://github.com/jaybuff/joot
 Homepage: http://getjoot.org
 Description: chroot management utility
