@@ -5,7 +5,21 @@ use warnings;
 
 use Module::Build;
 
-my $build = Module::Build->new(
+my $class = Module::Build->subclass( code => <<'ENDSUB' );
+    sub ACTION_deb {
+        my $self = shift;
+        $self->do_system("yada rebuild");
+        $self->do_system("debuild");
+    }
+
+    sub ACTION_debclean {
+        my $self = shift;
+        $self->do_system("debuild clean");
+        $self->do_system("rm debian/rules debian/control");
+    }
+ENDSUB
+
+my $build = $class->new(
     module_name => 'Joot',
     license     => 'apache',
     requires    => {
@@ -24,6 +38,9 @@ my $build = Module::Build->new(
         'Test::Perl::Critic' => 0,
         'Test::Perl::Tidy'   => 0,
     },
+    conf_files   => { 'joot.cfg' => 'conf/joot.cfg' },
+    install_path => { 'conf'     => '/etc' }
 );
 
+$build->add_build_element('conf');
 $build->create_build_script;
