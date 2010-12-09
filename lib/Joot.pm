@@ -18,8 +18,9 @@ use LWP::UserAgent ();
 sub new {
     my $proto = shift;
     my $class = ref($proto) || $proto;
+    my $name  = shift;
 
-    my $self = bless {}, $class;
+    my $self = bless { name => $name, }, $class;
     my $joot_home = config("joot_home");
     DEBUG("set home to $joot_home");
 
@@ -42,11 +43,11 @@ sub new {
 # no-home   don't mount the user's home directory inside the chroot
 # ro-home   mount the user's home dir as read-only
 sub chroot {    ## no critic qw(Subroutines::ProhibitBuiltinHomonyms Subroutines::RequireArgUnpacking)
-    my $self      = shift;
-    my $args      = ( ref( $_[-1] ) eq "HASH" ) ? pop : {};
-    my $joot_name = shift || die "missing joot name to chroot into\n";
+    my $self = shift;
+    my $args = ( ref( $_[-1] ) eq "HASH" ) ? pop : {};
 
-    my $joots = $self->list();
+    my $joot_name = $self->name();
+    my $joots     = $self->list();
     if ( !exists $joots->{$joot_name} ) {
         die "Joot \"$joot_name\" does not exist\n";
     }
@@ -59,17 +60,17 @@ sub chroot {    ## no critic qw(Subroutines::ProhibitBuiltinHomonyms Subroutines
 
     if ( !$args->{'no-home'} ) {
         my $mount_args = $args->{'ro-home'} ? { 'read-only' => 1 } : {};
-        $self->mount( $joot_name, $real_homedir, $mount_args );
+        $self->mount( $real_homedir, $mount_args );
     }
     else {
 
         # if it happens to already be mounted, unmount it
         # TODO what if someone is using it in another instance?
-        $self->umount( $joot_name, $real_homedir );
+        $self->umount($real_homedir);
     }
 
-    $self->automount($joot_name);
-    my $mnt = Cwd::abs_path( $self->mount_point($joot_name) );
+    $self->automount();
+    my $mnt = Cwd::abs_path( $self->mount_point() );
 
     # special handling of ssh socket
     my ( @kill_pids, @to_chown );
@@ -109,7 +110,7 @@ sub chroot {    ## no critic qw(Subroutines::ProhibitBuiltinHomonyms Subroutines
         die "\n";
     };
 
-    if ( @to_chown ) {
+    if (@to_chown) {
         chown( $uid, $gid, @to_chown ) or die "Failed to chown " . join( ", ", @to_chown ) . ": $OS_ERROR\n";
     }
 
@@ -172,20 +173,18 @@ sub chroot {    ## no critic qw(Subroutines::ProhibitBuiltinHomonyms Subroutines
 }
 
 sub get_config {
-    my $self      = shift;
-    my $joot_name = shift;
+    my $self = shift;
 
-    my $joot_dir  = $self->joot_dir($joot_name);
+    my $joot_dir  = $self->joot_dir();
     my $conf_file = "$joot_dir/config.js";
     return JSON::from_json( slurp($conf_file) );
 }
 
 sub set_config {
-    my $self      = shift;
-    my $joot_name = shift;
-    my $conf      = shift;
+    my $self = shift;
+    my $conf = shift;
 
-    my $joot_dir  = $self->joot_dir($joot_name);
+    my $joot_dir  = $self->joot_dir();
     my $conf_file = "$joot_dir/config.js";
     open my $conf_fh, '>', $conf_file or die "Failed to write to $conf_file: $!\n";
     my $config = JSON::to_json( $conf, { pretty => 1 } );
@@ -196,26 +195,25 @@ sub set_config {
 }
 
 # three ways to call:
-# $joot->mount( $name ); # mount $joot->mount_point and automounts
-# $joot->mount( $name, qw(/home/jaybuff /tmp /etc) );
-# $joot->mount( $name, qw(/home/jaybuff /tmp /etc), $args );
+# $joot->mount( ); # mount $joot->mount_point and automounts
+# $joot->mount( qw(/home/jaybuff /tmp /etc) );
+# $joot->mount( qw(/home/jaybuff /tmp /etc), $args );
 #
 # possible args:
 # always        save this mount in the config file so we always mount it
 # read-only     mount as read only
 # no-automount  don't call automount
 sub mount {    ## no critic qw(Subroutines::RequireArgUnpacking)
-    my $self      = shift;
-    my $args      = ( ref( $_[-1] ) eq "HASH" ) ? pop : {};
-    my $joot_name = shift or die "missing joot name to mount\n";
-    my @dirs      = @_;
+    my $self = shift;
+    my $args = ( ref( $_[-1] ) eq "HASH" ) ? pop : {};
+    my @dirs = @_;
 
     # connect and mount the joot first
     # this is a no op if it's already connected/mounted
-    my $mnt = $self->mount_point($joot_name);
+    my $mnt = $self->mount_point();
     mkpath($mnt);
 
-    my $device = nbd_connect( $self->disk($joot_name) );
+    my $device = nbd_connect( $self->disk() );
 
     #TODO some images have partitions (mount ${device}p1 etc)
     if ( !is_mounted($mnt) ) {
@@ -226,7 +224,7 @@ sub mount {    ## no critic qw(Subroutines::RequireArgUnpacking)
     }
 
     if ( !@dirs && !$args->{'no-automount'} ) {
-        return $self->automount($joot_name);
+        return $self->automount();
     }
 
     # if user passes in /.//foo and /foo/bar we need to
@@ -256,21 +254,20 @@ sub mount {    ## no critic qw(Subroutines::RequireArgUnpacking)
 
     if ( $args->{always} ) {
         delete $args->{always};
-        my $conf = $self->get_config($joot_name);
+        my $conf = $self->get_config();
         foreach my $dir (@dirs) {
             $conf->{automount}->{$dir} = $args;
         }
-        $self->set_config( $joot_name, $conf );
+        $self->set_config($conf);
     }
 
     return;
 }
 
 sub automount {
-    my $self      = shift;
-    my $joot_name = shift;
+    my $self = shift;
 
-    my $conf = $self->get_config($joot_name);
+    my $conf = $self->get_config();
 
     # we need to sanitize the directories so we can properly sort them
     # if /foo and /foo/bar are both in auto mounts, we have to mount
@@ -286,7 +283,7 @@ sub automount {
     }
 
     foreach my $dir ( sort keys %{$auto} ) {
-        $self->mount( $joot_name, $dir, $auto->{$dir} );
+        $self->mount( $dir, $auto->{$dir} );
     }
 
     return;
@@ -294,21 +291,19 @@ sub automount {
 
 # return the directory where this joot is/should be mounted
 sub mount_point {
-    my $self      = shift;
-    my $joot_name = shift;
+    my $self = shift;
 
-    my $joot_dir = $self->joot_dir($joot_name);
+    my $joot_dir = $self->joot_dir();
     return "$joot_dir/mnt";
 }
 
 # unmount specified dirs or everything if no dirs passed in
 sub umount {    ## no critic qw(Subroutines::RequireArgUnpacking)
-    my $self      = shift;
-    my $args      = ( ref( $_[-1] ) eq "HASH" ) ? pop : {};
-    my $joot_name = shift;
-    my @dirs      = @_;
+    my $self = shift;
+    my $args = ( ref( $_[-1] ) eq "HASH" ) ? pop : {};
+    my @dirs = @_;
 
-    my $mnt = Cwd::abs_path( $self->mount_point($joot_name) );
+    my $mnt = Cwd::abs_path( $self->mount_point() );
     if ( !@dirs ) {
         DEBUG "unmounting all mounts for this joot";
         foreach my $dir ( grep {/^$mnt/x} get_mounts() ) {
@@ -316,7 +311,7 @@ sub umount {    ## no critic qw(Subroutines::RequireArgUnpacking)
         }
 
         # by now $mnt is unmounted, so we can disconnect the disk from nbd
-        my $disk = $self->disk($joot_name);
+        my $disk = $self->disk();
         if ( my $device = Joot::Util::is_disk_connected($disk) ) {
             nbd_disconnect($device);
         }
@@ -340,7 +335,7 @@ sub umount {    ## no critic qw(Subroutines::RequireArgUnpacking)
             run( bin("umount"), $target );
         }
         else {
-            DEBUG "$dir isn't mounted in $joot_name";
+            DEBUG "$dir isn't mounted in " . $self->name();
         }
     }
 
@@ -348,10 +343,14 @@ sub umount {    ## no critic qw(Subroutines::RequireArgUnpacking)
 }
 
 sub joot_dir {
-    my $self      = shift;
-    my $joot_name = shift || "";
+    my $self = shift;
+    my $joot_name = $self->name() || die "joot name is not set\n";
+    return $self->joots_dir() . $joot_name;
+}
+
+sub joots_dir {
     my $joot_home = config("joot_home");
-    return "$joot_home/joots/$joot_name";
+    return "$joot_home/joots/";
 }
 
 sub get_image {
@@ -367,12 +366,11 @@ sub get_image {
 
 sub create {
     my $self       = shift;
-    my $joot_name  = shift or die "missing joot name to create\n";
     my $image_name = shift;
 
-    my $joot_dir = $self->joot_dir($joot_name);
+    my $joot_dir = $self->joot_dir();
     if ( -e $joot_dir ) {
-        die "$joot_name already exists.\n";
+        die $self->name() . " already exists.\n";
     }
 
     #TODO default image (from config?  or uname?)
@@ -388,10 +386,10 @@ sub create {
     }
 
     mkpath($joot_dir);
-    run( bin("qemu-img"), qw(create -f qcow2 -o), "backing_file=" . $image->path(), $self->disk($joot_name) );
+    run( bin("qemu-img"), qw(create -f qcow2 -o), "backing_file=" . $image->path(), $self->disk() );
 
-    $self->mount( $joot_name, { 'no-automount' => 1 } );
-    my $mnt = $self->mount_point($joot_name);
+    $self->mount( { 'no-automount' => 1 } );
+    my $mnt = $self->mount_point();
     my $files = config( "copy_from_root", [] );
     if ( ref($files) ne "ARRAY" ) {
         die "setting copy_from_root in config must be an array\n";
@@ -420,15 +418,14 @@ sub create {
         $conf->{automount}->{'/dev/pts'} = {};
     }
 
-    $self->set_config( $joot_name, $conf );
+    $self->set_config($conf);
     return 1;
 }
 
 sub disk {
-    my $self      = shift;
-    my $joot_name = shift;
+    my $self = shift;
 
-    my $joot_dir = $self->joot_dir($joot_name);
+    my $joot_dir = $self->joot_dir();
     return "$joot_dir/disk.qcow2";
 }
 
@@ -468,11 +465,11 @@ sub images {
 sub list {
     my $self = shift;
 
-    my $joots    = {};
-    my $joot_dir = $self->joot_dir();
-    opendir( my $dh, $joot_dir ) or die "can't read directory $joot_dir: $!\n";
+    my $joots     = {};
+    my $joots_dir = $self->joots_dir();
+    opendir( my $dh, $joots_dir ) or die "can't read directory $joots_dir: $!\n";
     while ( my $joot = readdir($dh) ) {
-        my $conf = "$joot_dir/$joot/config.js";
+        my $conf = "$joots_dir/$joot/config.js";
         if ( !-e $conf ) {
             next;
         }
@@ -484,34 +481,25 @@ sub list {
 }
 
 sub delete {    ## no critic qw(Subroutines::ProhibitBuiltinHomonyms Subroutines::RequireArgUnpacking)
-    my $self  = shift;
-    my $args  = ( ref( $_[-1] ) eq "HASH" ) ? pop : {};
-    my @joots = @_;
+    my $self = shift;
 
-    if ( !@joots ) {
-        die "missing joot name to delete\n";
+    $self->umount();
+    my $joot_dir = $self->joot_dir();
+    if ( !-d $joot_dir ) {
+        WARN $self->name() . " doesn't exist";
+        next;
     }
 
-    foreach my $joot_name (@joots) {
-        $self->umount($joot_name);
-        my $joot_dir = $self->joot_dir($joot_name);
-        if ( !-d $joot_dir ) {
-            WARN "$joot_name doesn't exist";
-            next;
-        }
-
-        rmpath($joot_dir);
-    }
+    rmpath($joot_dir);
     return;
 }
 
 sub rename {    ## no critic qw(Subroutines::ProhibitBuiltinHomonyms)
-    my $self     = shift;
-    my $old_name = shift || die "rename: missing old name\n";
+    my $self = shift;
     my $new_name = shift || die "rename: missing new name\n";
 
-    my $old = $self->joot_dir($old_name);
-    my $new = $self->joot_dir($new_name);
+    my $old = $self->joot_dir();
+    my $new = Joot->new($new_name)->joot_dir();
 
     if ( -d $new ) {
         FATAL "Can't rename $new to $old because joot named $old already exists";
@@ -525,6 +513,11 @@ sub rename {    ## no critic qw(Subroutines::ProhibitBuiltinHomonyms)
 
     File::Copy::move( $old, $new );
     return;
+}
+
+sub name {
+    my $self = shift;
+    return $self->{name} || "";
 }
 
 1;

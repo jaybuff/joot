@@ -47,16 +47,25 @@ if ( $action ne "images" && $action ne "list" ) {
         push @{$orig_argv}, "--user", scalar( getpwuid($REAL_USER_ID) );
     }
 
-    sudo($0, $orig_argv);
+    sudo( $0, $orig_argv );
 }
 
 my $ret;
 eval {
-    my $joot = Joot->new();
-    if ( keys %options ) { 
-        $ret = $joot->$action( @ARGV, \%options );
-    } else { 
-        $ret = $joot->$action( @ARGV );
+    if ( $action eq "delete" )
+    {
+        foreach my $name (@ARGV) {
+            Joot->new($name)->delete();
+        }
+    }
+    else {
+        my $joot = Joot->new( shift @ARGV );
+        if ( keys %options ) {
+            $ret = $joot->$action( @ARGV, \%options );
+        }
+        else {
+            $ret = $joot->$action(@ARGV);
+        }
     }
     1;
 } or do {
@@ -104,7 +113,7 @@ sub get_action {
     if ( keys %action == 0 ) {
         $action{chroot} = 1;
         if ( !@ARGV ) {
-            die usage( "missing action" ) . "\n";
+            die usage("missing action") . "\n";
         }
     }
     elsif ( keys %action != 1 ) {
@@ -118,7 +127,8 @@ sub action_opt_spec {
     my $act = shift;
     if ( $act eq "chroot" ) {
         return ( "user=s", "cmd=s", "no-home", "ro-home" );
-    } elsif ( $act eq "mount" ) { 
+    }
+    elsif ( $act eq "mount" ) {
         return ( "always", "read-only", );
     }
 

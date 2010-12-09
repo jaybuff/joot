@@ -27,13 +27,13 @@ rmpath($home);
 END { rmpath($home); }
 
 $ENV{JOOT_CONFIG} = "$FindBin::Bin/unit.conf";
-my $joot = Joot->new();
+my $joot = Joot->new( "foo" );
 
-throws_ok( sub { $joot->create( "foo", "bogus_image" ); }, qr/"bogus_image" is an invalid image name/ );
-throws_ok( sub { $joot->create("foo"); }, qr/missing image name for create/ );
+throws_ok( sub { $joot->create( "bogus_image" ); }, qr/"bogus_image" is an invalid image name/ );
+throws_ok( sub { $joot->create(); }, qr/missing image name for create/ );
 
-lives_ok( sub { $joot->create( "foo", "test_image" ); }, "create joot" );
-throws_ok( sub { $joot->create( "foo", "test_image" ); }, qr/foo already exists./ );
-ok( -d $joot->joot_dir("foo"), "joot dir was created" );
-ok( -f $joot->disk("foo"),     "disk was created" );
-lives_ok( sub { $joot->delete("foo"); }, "delete joot" );
+lives_ok( sub { $joot->create( "test_image" ); }, "create joot" );
+throws_ok( sub { $joot->create( "test_image" ); }, qr/foo already exists./ );
+ok( -d $joot->joot_dir(), "joot dir was created" );
+ok( -f $joot->disk(),     "disk was created" );
+lives_ok( sub { $joot->delete(); }, "delete joot" );
