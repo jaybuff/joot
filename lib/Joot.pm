@@ -47,8 +47,7 @@ sub chroot {    ## no critic qw(Subroutines::ProhibitBuiltinHomonyms Subroutines
     my $args = ( ref( $_[-1] ) eq "HASH" ) ? pop : {};
 
     my $joot_name = $self->name();
-    my $joots     = $self->list();
-    if ( !exists $joots->{$joot_name} ) {
+    if ( !$self->exists() ) { 
         die "Joot \"$joot_name\" does not exist\n";
     }
 
@@ -208,6 +207,10 @@ sub mount {    ## no critic qw(Subroutines::RequireArgUnpacking)
     my $args = ( ref( $_[-1] ) eq "HASH" ) ? pop : {};
     my @dirs = @_;
 
+    if ( !$self->exists() ) { 
+        die "Joot \"" . $self->name() . "\" does not exist\n";
+    }
+
     # connect and mount the joot first
     # this is a no op if it's already connected/mounted
     my $mnt = $self->mount_point();
@@ -303,6 +306,10 @@ sub umount {    ## no critic qw(Subroutines::RequireArgUnpacking)
     my $args = ( ref( $_[-1] ) eq "HASH" ) ? pop : {};
     my @dirs = @_;
 
+    if ( !$self->exists() ) { 
+        die "Joot \"" . $self->name() . "\" does not exist\n";
+    }
+
     my $mnt = Cwd::abs_path( $self->mount_point() );
     if ( !@dirs ) {
         DEBUG "unmounting all mounts for this joot";
@@ -388,20 +395,6 @@ sub create {
     mkpath($joot_dir);
     run( bin("qemu-img"), qw(create -f qcow2 -o), "backing_file=" . $image->path(), $self->disk() );
 
-    $self->mount( { 'no-automount' => 1 } );
-    my $mnt = $self->mount_point();
-    my $files = config( "copy_from_root", [] );
-    if ( ref($files) ne "ARRAY" ) {
-        die "setting copy_from_root in config must be an array\n";
-    }
-    foreach my $file ( @{$files} ) {
-        if ( !-e $file ) {
-            WARN "$file doesn't exist.  not copying into joot";
-            next;
-        }
-        File::Copy::copy( $file, "$mnt/$file" );
-    }
-
     my $conf = {
         image     => $image->url(),
         creator   => $ENV{SUDO_USER} || $ENV{USER},
@@ -419,6 +412,21 @@ sub create {
     }
 
     $self->set_config($conf);
+
+    $self->mount( { 'no-automount' => 1 } );
+    my $mnt = $self->mount_point();
+    my $files = config( "copy_from_root", [] );
+    if ( ref($files) ne "ARRAY" ) {
+        die "setting copy_from_root in config must be an array\n";
+    }
+    foreach my $file ( @{$files} ) {
+        if ( !-e $file ) {
+            WARN "$file doesn't exist.  not copying into joot";
+            next;
+        }
+        File::Copy::copy( $file, "$mnt/$file" );
+    }
+
     return 1;
 }
 
@@ -468,13 +476,15 @@ sub list {
     my $joots     = {};
     my $joots_dir = $self->joots_dir();
     opendir( my $dh, $joots_dir ) or die "can't read directory $joots_dir: $!\n";
-    while ( my $joot = readdir($dh) ) {
-        my $conf = "$joots_dir/$joot/config.js";
-        if ( !-e $conf ) {
+    while ( my $joot_name = readdir($dh) ) {
+        next if ( $joot_name =~ /^\.\.?$/ );    # skip . and .. dirs
+        my $joot = Joot->new($joot_name);
+        if ( !$joot->exists() ) {
+            WARN "$joots_dir/$joot_name exists, but $joot_name doesn't exist";
             next;
         }
 
-        $joots->{$joot} = JSON::from_json( slurp($conf) );
+        $joots->{$joot_name} = $joot->get_config();
     }
 
     return $joots;
@@ -483,7 +493,9 @@ sub list {
 sub delete {    ## no critic qw(Subroutines::ProhibitBuiltinHomonyms Subroutines::RequireArgUnpacking)
     my $self = shift;
 
-    $self->umount();
+    # umount may fail if it doesn't exist, but we want to be sure to delete it
+    # in case it got corrupted
+    eval { $self->umount(); };
     my $joot_dir = $self->joot_dir();
     if ( !-d $joot_dir ) {
         WARN $self->name() . " doesn't exist";
@@ -497,6 +509,10 @@ sub delete {    ## no critic qw(Subroutines::ProhibitBuiltinHomonyms Subroutines
 sub rename {    ## no critic qw(Subroutines::ProhibitBuiltinHomonyms)
     my $self = shift;
     my $new_name = shift || die "rename: missing new name\n";
+
+    if ( !$self->exists() ) { 
+        die "Joot \"" . $self->name() . "\" does not exist\n";
+    }
 
     $self->umount();
 
@@ -520,6 +536,12 @@ sub rename {    ## no critic qw(Subroutines::ProhibitBuiltinHomonyms)
 sub name {
     my $self = shift;
     return $self->{name} || "";
+}
+
+sub exists {
+    my $self = shift;
+
+    return eval { $self->get_config() };
 }
 
 1;
