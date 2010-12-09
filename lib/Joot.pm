@@ -498,6 +498,8 @@ sub rename {    ## no critic qw(Subroutines::ProhibitBuiltinHomonyms)
     my $self = shift;
     my $new_name = shift || die "rename: missing new name\n";
 
+    $self->umount();
+
     my $old = $self->joot_dir();
     my $new = Joot->new($new_name)->joot_dir();
 
