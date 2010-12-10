@@ -138,7 +138,7 @@ sub is_disk_connected {
 }
 
 # get the next unused nbd device
-# note that this doesn't create a lock on this device, beward race conditions
+# note that this doesn't create a lock on this device, beware race conditions
 sub get_nbd_device {
 
     my @nbd_sys_dirs = glob("/sys/block/nbd*");

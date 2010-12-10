@@ -7,14 +7,16 @@ use Carp 'croak';
 use Cwd ();
 use Log::Log4perl ':easy';
 use LWP::UserAgent ();
-use Joot::Util     ();
+use Joot::Util qw( run bin );
 
 sub new {
     my $proto = shift;
     my $class = ref($proto) || $proto;
     my $url   = shift;
+    my $args  = shift;
+    $args->{url} = $url;
 
-    my $self = bless { url => $url, }, $class;
+    my $self = bless $args, $class;
     my $path = $self->path();
     if ( -e $path ) {
         $self->{cached} = 1;
@@ -31,7 +33,7 @@ sub download {
         return;
     }
 
-    my $file      = $self->path();
+    my $file      = $self->path("save_ext");
     my $image_url = $self->url();
     DEBUG "saving $image_url to $file";
 
@@ -52,6 +54,14 @@ sub download {
         croak $response->status_line;
     }
 
+    # uncompressed if necessary
+    if ( $image_url =~ /\.bz2$/xi ) {
+        run( bin('bunzip2'), $file );
+    }
+    elsif ( $image_url =~ /\.gz$/xi ) {
+        run( bin('gunzip'), $file );
+    }
+
     $self->{cached} = 1;
     return;
 }
@@ -61,7 +71,7 @@ sub name {
 
     my $url = $self->{url};
     my $name;
-    if ( $url =~ m#.*/(.*)\.#x ) {
+    if ( $url =~ m#.*/(.*)\.qcow2?(\.(bz2|gz))?$#xi ) {
         $name = $1;
     }
     else {
@@ -71,8 +81,11 @@ sub name {
     return $name;
 }
 
+# the path of where the image lives or will live on the file system when
+# we cache it
 sub path {
-    my $self = shift;
+    my $self     = shift;
+    my $save_ext = shift;    # by default we wont save the extension
 
     my $url = $self->{url};
     my $file;
@@ -81,6 +94,11 @@ sub path {
     }
     else {
         croak "failed to convert $url to a file\n";
+    }
+
+    # we'll remove the .bz2 or .gz when we uncompress it
+    if ( !$save_ext ) {
+        $file =~ s/\.(gz|bz2)$//xi;
     }
 
     my $joot_home = Joot::Util::config("joot_home");
@@ -93,6 +111,19 @@ sub cached {
 
 sub url {
     return shift->{url};
+}
+
+sub root_partition {
+    return shift->{root_partition} || undef;
+}
+
+sub config {
+    my $self = shift;
+
+    return {
+        url            => $self->url(),
+        root_partition => $self->root_partition(),
+    };
 }
 
 1;

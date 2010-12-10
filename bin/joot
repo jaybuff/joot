@@ -79,7 +79,7 @@ if ( $action eq "list" ) {
 
     foreach my $name ( keys %$ret ) {
         my $joot        = $ret->{$name};
-        my $image_name  = Joot::Image->new( $joot->{image} )->name();
+        my $image_name  = Joot::Image->new( $joot->{image}->{url} )->name();
         my $create_date = localtime( $joot->{ctime} );
 
         # bar jaybuff 1287188379 debian-5.0-i386-20101008

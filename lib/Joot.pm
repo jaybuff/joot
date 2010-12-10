@@ -207,8 +207,9 @@ sub mount {    ## no critic qw(Subroutines::RequireArgUnpacking)
     my $args = ( ref( $_[-1] ) eq "HASH" ) ? pop : {};
     my @dirs = @_;
 
+    my $joot_name = $self->name();
     if ( !$self->exists() ) { 
-        die "Joot \"" . $self->name() . "\" does not exist\n";
+        die "Joot \"$joot_name\" does not exist\n";
     }
 
     # connect and mount the joot first
@@ -217,6 +218,22 @@ sub mount {    ## no critic qw(Subroutines::RequireArgUnpacking)
     mkpath($mnt);
 
     my $device = nbd_connect( $self->disk() );
+    my $conf = $self->get_config();
+    # partition is always > 0 if it exists
+    if ( exists($conf->{image}) && $conf->{image}->{root_partition} ) {
+        my $part = $conf->{image}->{root_partition};
+        $device = "${device}p$part";
+        # when the device is first connected, it takes a bit for the /dev
+        # device to be created.  we'll give it 5 seconds before giving up
+        local $SIG{ALRM} = sub { die "config for $joot_name says root_partition is $part, but $device doesn't exist\n"; };
+        alarm(5);
+        while (1) {
+            if ( -e $device ) {
+                alarm(0);    # cancel alarm
+                last;
+            }
+        }
+    }
 
     #TODO some images have partitions (mount ${device}p1 etc)
     if ( !is_mounted($mnt) ) {
@@ -257,7 +274,6 @@ sub mount {    ## no critic qw(Subroutines::RequireArgUnpacking)
 
     if ( $args->{always} ) {
         delete $args->{always};
-        my $conf = $self->get_config();
         foreach my $dir (@dirs) {
             $conf->{automount}->{$dir} = $args;
         }
@@ -396,7 +412,7 @@ sub create {
     run( bin("qemu-img"), qw(create -f qcow2 -o), "backing_file=" . $image->path(), $self->disk() );
 
     my $conf = {
-        image     => $image->url(),
+        image     => $image->config(),
         creator   => $ENV{SUDO_USER} || $ENV{USER},
         ctime     => time(),
         automount => {
@@ -437,6 +453,7 @@ sub disk {
     return "$joot_dir/disk.qcow2";
 }
 
+#TODO also list images that are downloaded, but not referenced in any index
 sub images {
     my $self = shift;
 
@@ -444,13 +461,19 @@ sub images {
     my $image_sources = config("image_sources");
     foreach my $url ( @{$image_sources} ) {
         eval {
+            # content looks like this:
+            # {
+            #    "http://getjoot.org/images/debian.5-0.x86.20100901.qcow.bz2": {
+            #        "root_partition": 1,
+            #    }
+            # }
             my $content = get_url("$url");
             my $index   = JSON::from_json($content);
-            if ( ref($index) ne "ARRAY" ) {
-                die "expected JSON array from $url\n";
+            if ( ref($index) ne "HASH" ) {
+                die "expected JSON hash from $url\n";
             }
-            foreach my $image_url ( @{$index} ) {
-                my $image = Joot::Image->new($image_url);
+            foreach my $image_url ( keys %{ $index } ) {
+                my $image = Joot::Image->new($image_url, $index->{$image_url} );
                 my $name  = $image->name();
                 if ( exists $images->{$name} ) {
                     my $other_url = $images->{$name}->url();
@@ -477,7 +500,7 @@ sub list {
     my $joots_dir = $self->joots_dir();
     opendir( my $dh, $joots_dir ) or die "can't read directory $joots_dir: $!\n";
     while ( my $joot_name = readdir($dh) ) {
-        next if ( $joot_name =~ /^\.\.?$/ );    # skip . and .. dirs
+        next if ( $joot_name =~ /^\.\.?$/x );    # skip . and .. dirs
         my $joot = Joot->new($joot_name);
         if ( !$joot->exists() ) {
             WARN "$joots_dir/$joot_name exists, but $joot_name doesn't exist";
@@ -499,7 +522,7 @@ sub delete {    ## no critic qw(Subroutines::ProhibitBuiltinHomonyms Subroutines
     my $joot_dir = $self->joot_dir();
     if ( !-d $joot_dir ) {
         WARN $self->name() . " doesn't exist";
-        next;
+        return;
     }
 
     rmpath($joot_dir);
@@ -595,6 +618,8 @@ This application depends on these binaries:
     mount
     umount
     ps
+    bunzip2
+    gunzip
 
 =head1 CONFIGURATION AND ENVIRONMENT
 
