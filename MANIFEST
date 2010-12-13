@@ -12,6 +12,7 @@ README
 t/create.t
 t/data/images.js
 t/data/test_image.qcow2
+t/data/compressed_test_image.qcow2.bz2
 t/images.t
 t/joot_image.t
 t/joot_util.t
