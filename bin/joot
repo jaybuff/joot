@@ -77,7 +77,7 @@ eval {
 # format the responses for list and images actions
 if ( $action eq "list" ) {
 
-    foreach my $name ( keys %$ret ) {
+    foreach my $name ( sort keys %$ret ) {
         my $joot        = $ret->{$name};
         my $image_name  = Joot::Image->new( $joot->{image}->{url} )->name();
         my $create_date = localtime( $joot->{ctime} );
@@ -88,7 +88,7 @@ if ( $action eq "list" ) {
     }
 }
 elsif ( $action eq "images" ) {
-    foreach my $name ( keys %$ret ) {
+    foreach my $name ( sort keys %$ret ) {
         my $image = $ret->{$name};
         my $len   = max_len( keys %$ret );
         printf( "%${len}s%s %s\n", $name, $image->cached() ? "*" : " ", $image->url() );
