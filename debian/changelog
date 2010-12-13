@@ -1,4 +1,4 @@
-joot (0.0.1-1) unstable; urgency=low
+joot (0.0.1-1) stable testing unstable; urgency=low
 
   * Initial debian package
 
