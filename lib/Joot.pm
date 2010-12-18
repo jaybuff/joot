@@ -31,6 +31,8 @@ sub new {
         }
     }
 
+    $self->load_plugins();
+
     return $self;
 }
 
@@ -47,7 +49,7 @@ sub chroot {    ## no critic qw(Subroutines::ProhibitBuiltinHomonyms Subroutines
     my $args = ( ref( $_[-1] ) eq "HASH" ) ? pop : {};
 
     my $joot_name = $self->name();
-    if ( !$self->exists() ) { 
+    if ( !$self->exists() ) {
         die "Joot \"$joot_name\" does not exist\n";
     }
 
@@ -208,7 +210,7 @@ sub mount {    ## no critic qw(Subroutines::RequireArgUnpacking)
     my @dirs = @_;
 
     my $joot_name = $self->name();
-    if ( !$self->exists() ) { 
+    if ( !$self->exists() ) {
         die "Joot \"$joot_name\" does not exist\n";
     }
 
@@ -218,11 +220,13 @@ sub mount {    ## no critic qw(Subroutines::RequireArgUnpacking)
     mkpath($mnt);
 
     my $device = nbd_connect( $self->disk() );
-    my $conf = $self->get_config();
+    my $conf   = $self->get_config();
+
     # partition is always > 0 if it exists
-    if ( exists($conf->{image}) && $conf->{image}->{root_partition} ) {
+    if ( exists( $conf->{image} ) && $conf->{image}->{root_partition} ) {
         my $part = $conf->{image}->{root_partition};
         $device = "${device}p$part";
+
         # when the device is first connected, it takes a bit for the /dev
         # device to be created.  we'll give it 5 seconds before giving up
         local $SIG{ALRM} = sub { die "config for $joot_name says root_partition is $part, but $device doesn't exist\n"; };
@@ -322,7 +326,7 @@ sub umount {    ## no critic qw(Subroutines::RequireArgUnpacking)
     my $args = ( ref( $_[-1] ) eq "HASH" ) ? pop : {};
     my @dirs = @_;
 
-    if ( !$self->exists() ) { 
+    if ( !$self->exists() ) {
         die "Joot \"" . $self->name() . "\" does not exist\n";
     }
 
@@ -443,6 +447,8 @@ sub create {
         File::Copy::copy( $file, "$mnt/$file" );
     }
 
+    $self->run_hook("post_create");
+
     return 1;
 }
 
@@ -461,6 +467,7 @@ sub images {
     my $image_sources = config("image_sources");
     foreach my $url ( @{$image_sources} ) {
         eval {
+
             # content looks like this:
             # {
             #    "http://getjoot.org/images/debian.5-0.x86.20100901.qcow.bz2": {
@@ -472,9 +479,9 @@ sub images {
             if ( ref($index) ne "HASH" ) {
                 die "expected JSON hash from $url\n";
             }
-            foreach my $image_url ( keys %{ $index } ) {
-                my $image = Joot::Image->new($image_url, $index->{$image_url} );
-                my $name  = $image->name();
+            foreach my $image_url ( keys %{$index} ) {
+                my $image = Joot::Image->new( $image_url, $index->{$image_url} );
+                my $name = $image->name();
                 if ( exists $images->{$name} ) {
                     my $other_url = $images->{$name}->url();
                     WARN "collision!  $image_url and $other_url have the same name.  Ignoring $image_url";
@@ -533,7 +540,7 @@ sub rename {    ## no critic qw(Subroutines::ProhibitBuiltinHomonyms)
     my $self = shift;
     my $new_name = shift || die "rename: missing new name\n";
 
-    if ( !$self->exists() ) { 
+    if ( !$self->exists() ) {
         die "Joot \"" . $self->name() . "\" does not exist\n";
     }
 
@@ -565,6 +572,33 @@ sub exists {
     my $self = shift;
 
     return eval { $self->get_config() };
+}
+
+sub load_plugins {
+    my $self = shift;
+    foreach my $plugin ( @{ config("plugins") } ) {
+        if ( !eval "use Joot::Plugin::$plugin; 1;" ) {
+            die "Failed to load plugin $plugin: $@\n";
+        }
+    }
+
+}
+
+sub run_hook {
+    my $self = shift;
+    my $hook = shift or die "missing hook name\n";
+
+    foreach my $plugin ( @{ config("plugins") } ) {
+        my $class = "Joot::Plugin::$plugin";
+        if ( $class->can($hook) ) {
+            my $function = "${class}::$hook";
+            DEBUG "Dispatching to $function";
+            {
+                no strict 'refs';
+                $function->($self);
+            }
+        }
+    }
 }
 
 1;

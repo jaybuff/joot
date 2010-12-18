@@ -55,6 +55,10 @@ use LWP::UserAgent ();
         # otherwise, give them the whole hash reference
         if ( defined $field ) {
             if ( exists $config->{$field} ) {
+                if ( wantarray && ref( $config->{$field} ) ne "ARRAY" ) {
+                    die "config file setting $field should be an array\n";
+                }
+
                 return $config->{$field};
             }
             elsif ( defined $default ) {
