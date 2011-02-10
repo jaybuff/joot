@@ -6,6 +6,7 @@ use warnings;
 use vars '$VERSION';
 $VERSION = "0.0.1";
 
+use Cwd ();
 use English '-no_match_vars';
 use File::Copy  ();
 use File::Spec  ();
@@ -214,68 +215,9 @@ sub mount {    ## no critic qw(Subroutines::RequireArgUnpacking)
         die "Joot \"$joot_name\" does not exist\n";
     }
 
-    # connect and mount the joot first
-    # this is a no op if it's already connected/mounted
-    my $mnt = $self->mount_point();
-    mkpath($mnt);
+    $self->run_hook( "mount", $args, @dirs );
 
-    my $device = nbd_connect( $self->disk() );
-    my $conf   = $self->get_config();
-
-    # partition is always > 0 if it exists
-    if ( exists( $conf->{image} ) && $conf->{image}->{root_partition} ) {
-        my $part = $conf->{image}->{root_partition};
-        $device = "${device}p$part";
-
-        # when the device is first connected, it takes a bit for the /dev
-        # device to be created.  we'll give it 5 seconds before giving up
-        local $SIG{ALRM} = sub { die "config for $joot_name says root_partition is $part, but $device doesn't exist\n"; };
-        alarm(5);
-        while (1) {
-            if ( -e $device ) {
-                alarm(0);    # cancel alarm
-                last;
-            }
-        }
-    }
-
-    #TODO some images have partitions (mount ${device}p1 etc)
-    if ( !is_mounted($mnt) ) {
-        run( bin('mount'), $device, $mnt );
-    }
-    else {
-        DEBUG "$mnt is already mounted";
-    }
-
-    if ( !@dirs && !$args->{'no-automount'} ) {
-        return $self->automount();
-    }
-
-    # if user passes in /.//foo and /foo/bar we need to
-    # mount /foo then /foo/bar
-    foreach my $dir ( sort map { Cwd::abs_path($_) } @dirs ) {
-        my $target = Cwd::abs_path("$mnt/$dir");
-
-        if ( is_mounted($target) ) {
-            DEBUG "$target is already mounted";
-            next;
-        }
-
-        if ( !-e $dir ) {
-            WARN "$dir doesn't exist.  Not trying to mount";
-            next;
-        }
-
-        mkpath($target);
-        run( bin('mount'), '--bind', $dir, $target );
-
-        # can't bind mount readonly in one mount command
-        # see http://lwn.net/Articles/281157/
-        if ( $args->{'read-only'} ) {
-            run( bin('mount'), '-o', 'remount,ro', $target );
-        }
-    }
-
+    my $conf = $self->get_config();
     if ( $args->{always} ) {
         delete $args->{always};
         foreach my $dir (@dirs) {
@@ -330,41 +272,11 @@ sub umount {    ## no critic qw(Subroutines::RequireArgUnpacking)
         die "Joot \"" . $self->name() . "\" does not exist\n";
     }
 
-    my $mnt = Cwd::abs_path( $self->mount_point() );
-    if ( !@dirs ) {
-        DEBUG "unmounting all mounts for this joot";
-        foreach my $dir ( grep {/^$mnt/x} get_mounts() ) {
-            run( bin("umount"), $dir );
-        }
-
-        # by now $mnt is unmounted, so we can disconnect the disk from nbd
-        my $disk = $self->disk();
-        if ( my $device = Joot::Util::is_disk_connected($disk) ) {
-            nbd_disconnect($device);
-        }
-        else {
-            DEBUG "$disk wasn't connect to a nbd device; not trying to disconnect";
-        }
-        return;
+    if ( $self->run_hook( "umount", $args, @dirs ) == 0 ) {
+        die "There are no plugins registered that implement the umount hook\n";
     }
 
-    # if the joot itself isn't mounted, there can't be anything mounted under it
-    if ( !is_mounted($mnt) ) {
-        DEBUG "joot isn't mounted, nothing to do";
-        return;
-    }
-
-    # if user passes in /.//foo and /foo/bar we need to
-    # umount /foo/bar then /foo
-    foreach my $dir ( reverse sort map { Cwd::abs_path($_) } @dirs ) {
-        my $target = Cwd::abs_path("$mnt/$dir");
-        if ( is_mounted($target) ) {
-            run( bin("umount"), $target );
-        }
-        else {
-            DEBUG "$dir isn't mounted in " . $self->name();
-        }
-    }
+    $self->run_hook( "post_umount", $args, @dirs );
 
     return;
 }
@@ -413,7 +325,11 @@ sub create {
     }
 
     mkpath($joot_dir);
-    run( bin("qemu-img"), qw(create -f qcow2 -o), "backing_file=" . $image->path(), $self->disk() );
+    $self->run_hook( "pre_create", $image );
+
+    if ( $self->run_hook( "create", $image ) == 0 ) {
+        die "There are no plugins registered that implement the create hook\n";
+    }
 
     my $conf = {
         image     => $image->config(),
@@ -450,13 +366,6 @@ sub create {
     $self->run_hook("post_create");
 
     return 1;
-}
-
-sub disk {
-    my $self = shift;
-
-    my $joot_dir = $self->joot_dir();
-    return "$joot_dir/disk.qcow2";
 }
 
 #TODO also list images that are downloaded, but not referenced in any index
@@ -582,12 +491,16 @@ sub load_plugins {
         }
     }
 
+    return;
 }
 
+# returns number of hooks run;
 sub run_hook {
     my $self = shift;
     my $hook = shift or die "missing hook name\n";
+    my @args = @_;
 
+    my $count = 0;
     foreach my $plugin ( @{ config("plugins") } ) {
         my $class = "Joot::Plugin::$plugin";
         if ( $class->can($hook) ) {
@@ -595,10 +508,13 @@ sub run_hook {
             DEBUG "Dispatching to $function";
             {
                 no strict 'refs';
-                $function->($self);
+                $function->($self, @args);
+                $count++;
             }
         }
     }
+
+    return $count;
 }
 
 1;

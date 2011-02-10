@@ -6,9 +6,9 @@ use warnings;
 our ( @EXPORT_OK, %EXPORT_TAGS );
 
 use base 'Exporter';
-my @standard = qw( config nbd_connect nbd_disconnect bin run slurp get_ua
+my @standard = qw( config bin run slurp get_ua
   get_url mkpath rmpath is_mounted get_mounts get_gids proxy_socket drop_root );
-@EXPORT_OK = ( @standard, qw( is_disk_connected get_nbd_device sudo ) );
+@EXPORT_OK = ( @standard, qw( sudo ) );
 %EXPORT_TAGS = ( standard => \@standard );
 
 use Cwd ();
@@ -45,7 +45,7 @@ use LWP::UserAgent ();
                 }
             }
             if ( !$config_file ) {
-                die "couldn't find valid config file\n";
+                die "couldn't find valid config file (checked \$JOOT_CONFIG, $ENV{HOME}/.joot and /etc/joot.cfg)\n";
             }
             DEBUG( "Reading config file " . $config_file );
             $config = JSON::from_json( slurp($config_file), { relaxed => 1 } );
@@ -102,116 +102,6 @@ sub is_mounted {
     # normalize input
     $target = Cwd::abs_path($target);
     return grep { $_ eq $target } get_mounts();
-}
-
-sub nbd_disconnect {
-    my $device = shift;
-    run( bin("qemu-nbd"), "--disconnect", $device );
-    return;
-}
-
-# check all the pids in /sys/block/nbd*/pid to see if disk is already connected
-# if it's connected return the device otherwise return false
-sub is_disk_connected {
-    my $disk = shift;
-
-    foreach my $dir ( glob("/sys/block/nbd*") ) {
-        if ( -e "$dir/pid" ) {
-            my $pid = slurp("$dir/pid");
-            chomp $pid;
-
-            # $out should look like this:
-            # /usr/bin/qemu-nbd --connect /dev/nbd0 --socket /var/run/joot/nbd0.sock /home/jaybuff/joot/joots/foo//disk.qcow2
-            my $out = run( bin('ps'), '--pid', $pid, qw(-o args --no-headers) );
-            my $last_arg = ( split /\s+/x, $out )[-1] or next;
-            if ( !-e $last_arg ) {
-                WARN "qemu-nbd is connected to $last_arg which doesn't exist";
-                next;
-            }
-            my $maybe_disk = Cwd::abs_path($last_arg);
-            if ( $maybe_disk eq Cwd::abs_path($disk) ) {
-                if ( $dir =~ m#^/sys/block/(nbd\d+)#x ) {
-                    my $device = $1;
-                    return "/dev/$device";
-                }
-            }
-        }
-    }
-
-    return;
-}
-
-# get the next unused nbd device
-# note that this doesn't create a lock on this device, beware race conditions
-sub get_nbd_device {
-
-    my @nbd_sys_dirs = glob("/sys/block/nbd*");
-    if ( !@nbd_sys_dirs ) {
-        die "Couldn't find any nbd devices in /sys/block.  Try \"sudo modprobe nbd\"\n";
-    }
-
-    # custom sort because /sys/block/nbd9 should come before /sys/block/nbd10
-    my $nbd_sort = sub {
-        my ($l) = $a =~ /(\d+)/x or return $a cmp $b;
-        my ($r) = $b =~ /(\d+)/x or return $a cmp $b;
-        $l <=> $r;
-    };
-
-    my $device;
-    foreach my $dir ( sort $nbd_sort @nbd_sys_dirs ) {
-        if ( !-e "$dir/pid" ) {
-            if ( $dir =~ m#^/sys/block/(nbd\d+)#x ) {
-                $device = $1;
-                last;
-            }
-        }
-    }
-
-    if ( !$device ) {
-        FATAL "Unable to allocate nbd device.  Maybe they're all in use?  Try \"sudo modprobe nbd nbds_max=256\"";
-        die "\n";
-    }
-
-    return "/dev/$device";
-}
-
-# attach the qcow image to a device
-# return the path to the attached device
-sub nbd_connect {
-    my $disk = shift;
-    if ( !-e $disk ) {
-        die "File not found: $disk\n";
-    }
-
-    $disk = Cwd::abs_path($disk);
-
-    if ( my $device = is_disk_connected($disk) ) {
-        DEBUG "$disk is already attached to $device";
-        return $device;
-    }
-
-    my $sock_dir = config("sockets_dir");
-    $sock_dir =~ s#/*$##x;    # remove trailing slashes
-    if ( !-d $sock_dir ) {
-        mkpath($sock_dir);
-    }
-
-    my $device = get_nbd_device();
-    my ($device_name) = ( $device =~ m#/dev/(.+)#x );
-    run( bin("qemu-nbd"), "--connect", $device, "--socket", "$sock_dir/$device_name.sock", $disk );
-
-    # confirm it was connected
-    # if we don't get a pid in 5 seconds, die
-    local $SIG{ALRM} = sub { die "failed to connect ndb device to $device\n"; };
-    alarm(5);
-    while (1) {
-        if ( -e "/sys/block/$device_name/pid" ) {
-            alarm(0);    # cancel alarm
-            last;
-        }
-    }
-
-    return $device;
 }
 
 sub bin {
