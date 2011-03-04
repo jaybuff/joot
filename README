@@ -3,7 +3,7 @@ quick clean room environments for development, testing and package management.
 
 Goals
 -----
-  * fast (subsecond) to create and destroy
+  * fast (subsecond) to create, destroy and enter
   * only limitation on number of joots is disk space
   * use COW and sparse disks when possible
   * few dependencies (fast and easy installs)
@@ -19,7 +19,8 @@ try it out.
 
 Prereqs
 -------
-On Debian, you'll need to install these packages:
+On Debian:
+Install these packages:
 export DEBIAN_FRONTEND=noninteractive
 sudo apt-get install mount sudo qemu-kvm libjson-perl liblog-log4perl-perl \
 libwww-perl perl-modules socat -y
@@ -32,6 +33,8 @@ libtest-pod-perl -y
 linux kernel 2.6.26 for nbd support (ubuntu release intrepid ibex or later)
 When you mount a joot it uses a /dev/nbdX device.  
 sudo modprobe nbd nbds_max=256
+
+For Linux you'll want the QCOW and BindMount plugins enabled in your joot.cfg.
 
 Creating Images
 ---------------
