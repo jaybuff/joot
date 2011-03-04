@@ -54,6 +54,9 @@ my $ret;
 eval {
     if ( $action eq "delete" )
     {
+        if ( !@ARGV ) {
+            die "Missing joot to remove\n";
+        }
         foreach my $name (@ARGV) {
             Joot->new($name)->delete();
         }
@@ -144,7 +147,7 @@ ${message}Usage:
     $0 --create <name> <image>
     $0 --images 
     $0 --list 
-    $0 --delete <name> [<name> ...]
+    $0 --remove <name> [<name> ...]
     $0 --rename <old name> <new name>
     $0 --mount <name> [--read-only] [--always] [<dir> ...]
     $0 --umount <name> [<dir> ...] 
@@ -169,7 +172,7 @@ joot - utility to manage disk images and chroots to provide you with quick clean
         joot --create <name> <image>
         joot --images 
         joot --list 
-        joot --delete <name> [<name> ...]
+        joot --remove <name> [<name> ...]
         joot --rename <old name> <new name>
         joot --mount <name> [--read-only] [--always] [<dir> ...]
         joot --umount <name> [<dir> ...] 
