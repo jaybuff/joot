@@ -442,6 +442,12 @@ sub delete {    ## no critic qw(Subroutines::ProhibitBuiltinHomonyms Subroutines
     # umount may fail if it doesn't exist, but we want to be sure to delete it
     # in case it got corrupted
     eval { $self->umount(); };
+
+    my $mnt = $self->mount_point();
+    if ( scalar glob("$mnt/*") ) {
+        die "$mnt is not empty.  Perhaps joot couldn't be unmounted?\n";
+    }
+
     my $joot_dir = $self->joot_dir();
     if ( !-d $joot_dir ) {
         WARN $self->name() . " doesn't exist";
@@ -515,7 +521,7 @@ sub run_hook {
             DEBUG "Dispatching to $function";
             {
                 no strict 'refs';
-                $function->($self, @args);
+                $function->( $self, @args );
                 $count++;
             }
         }
