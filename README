@@ -15,7 +15,7 @@ Goals
 Status
 ------
 This project is considered alpha.  I'd love to hear your feedback if you want
-try it out.  
+try it out.
 
 Prereqs
 -------
@@ -36,6 +36,14 @@ sudo modprobe nbd nbds_max=256
 
 For Linux you'll want the QCOW and BindMount plugins enabled in your joot.cfg.
 
+For Mac OS X:
+Use macports to install these packages: 
+sudo port install bindfs socat p5-json p5-log-log4perl p5-libwww-perl
+
+For Mac OS X you'll want the MacOSX and BindFS plugins enabled in your joot.cfg.
+
+Note that Mac support is very alpha.  Don't expect anything to work.
+
 Creating Images
 ---------------
 CentOS:
@@ -53,6 +61,29 @@ sudo env LANG=C chroot /mnt/$image_name bash -c  "apt-get install -y \
     --force-yes sudo language-pack-en vim ssh man && apt-get clean"
 joot_image --umount $image_file
 sudo rmdir /mnt/$image_name
+
+Mac OS X:
+# Insert Mac OS X installation disk (assumes 10.5.7)
+export image_name=mac_os_x-10.5.7
+export image_file=~/images/$image_name.sparseimage
+mkdir ~/images
+hdiutil create -type SPARSE -fs HFS+ -volname $image_name -size 5g -attach \
+    $image_file
+touch /Volumes/$image_name/.metadata_never_index # Prevent spotlight indexing
+for P in BaseSystem Essentials BSD X11User; do \
+    sudo installer -target /Volumes/$image_name -pkg \
+        '/Volumes/Mac OS X Install DVD/System/Installation/Packages/'$P.pkg;\
+done
+
+#TODO consider runnng softwareupdate -i -a
+curl -L http://support.apple.com/downloads/DL827/en_US/MacOSXUpdCombo10.5.7.dmg\
+    -O /tmp/MacOSXUpdCombo10.5.7.dmg
+hdiutil attach /tmp/MacOSXUpdCombo10.5.7.dmg
+sudo env CM_BUILD=CM_BUILD installer -target /Volumes/$image_name -pkg \
+    /Volumes/'Mac OS X Update Combined'/MacOSXUpdCombo10.5.7.pkg
+hdiutil detach /Volumes/'Mac OS X Update Combined'
+rm /tmp/MacOSXUpdCombo10.5.7.dmg
+hdiutil detach /Volumes/$image_name -force 
 
 The default config file references a collection of images at getjoot.org
 

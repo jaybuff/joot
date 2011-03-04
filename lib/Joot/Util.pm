@@ -121,6 +121,11 @@ sub bin {
 
     # use this search path.  die if $prog isn't in one of these dirs
     my @paths = qw(/bin /sbin /usr/bin /usr/sbin /usr/local/bin /usr/local/sbin);
+    if ( $OSNAME eq "darwin" ) {
+        # macports installs binaries to here
+        push @paths, qw(/opt/local/bin /opt/local/sbin);
+    }
+
     foreach my $path (@paths) {
         if ( -x "$path/$prog" ) {
             return "$path/$prog";
@@ -137,10 +142,10 @@ sub run {
         $IPC::Cmd::VERBOSE = 1;
     }
 
-    my $cmd = join( " ", @args );
     my ( $success, $err, $full_buf, $stdout_buf, $stderr_buf ) = IPC::Cmd::run( command => \@args );
 
     if ( !$success ) {
+        my $cmd = join( " ", @args );
         FATAL "Error executing $cmd";
         if ($full_buf) {
             FATAL join( "", @{$full_buf} );
