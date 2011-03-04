@@ -332,11 +332,9 @@ sub create {
     }
 
     mkpath($joot_dir);
-    $self->run_hook( "pre_create", $image );
 
-    if ( $self->run_hook( "create", $image ) == 0 ) {
-        die "There are no plugins registered that implement the create hook\n";
-    }
+    $self->run_hook( "pre_create", $image );
+    $self->run_hook( "create",     $image );
 
     my $conf = {
         image     => $image->config(),
