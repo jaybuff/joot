@@ -224,6 +224,10 @@ sub mount {    ## no critic qw(Subroutines::RequireArgUnpacking)
 
     $self->run_hook( "mount", $args, @dirs );
 
+    if ( !@dirs && !$args->{'no-automount'} ) {
+        return $self->automount();
+    }
+
     my $conf = $self->get_config();
     if ( $args->{always} ) {
         delete $args->{always};
@@ -279,8 +283,35 @@ sub umount {    ## no critic qw(Subroutines::RequireArgUnpacking)
         die "Joot \"" . $self->name() . "\" does not exist\n";
     }
 
-    if ( $self->run_hook( "umount", $args, @dirs ) == 0 ) {
-        die "There are no plugins registered that implement the umount hook\n";
+    $self->run_hook( "pre_umount", $args, @dirs );
+
+    my $mnt = Cwd::abs_path( $self->mount_point() );
+
+    # if the joot itself isn't mounted, there can't be anything mounted under it
+    if ( !is_mounted($mnt) ) {
+        DEBUG "joot isn't mounted, nothing to do";
+        return;
+    }
+
+    if ( !@dirs ) {
+        DEBUG "unmounting mounted dirs for this joot";
+        foreach my $dir ( grep {/^$mnt/x} get_mounts() ) {
+            run( bin("umount"), $dir );
+        }
+
+        return;
+    }
+
+    # if user passes in /.//foo and /foo/bar we need to
+    # umount /foo/bar then /foo
+    foreach my $dir ( reverse sort map { Cwd::abs_path($_) } @dirs ) {
+        my $target = Cwd::abs_path("$mnt/$dir");
+        if ( is_mounted($target) ) {
+            run( bin("umount"), $target );
+        }
+        else {
+            DEBUG "$dir isn't mounted in " . $self->name();
+        }
     }
 
     $self->run_hook( "post_umount", $args, @dirs );

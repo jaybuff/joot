@@ -4,7 +4,6 @@ use strict;
 use warnings;
 
 use Cwd ();
-use Joot ();
 use Joot::Util qw(get_mounts is_mounted bin run mkpath);
 use Log::Log4perl ':easy';
 
@@ -13,14 +12,11 @@ sub mount {
     my $args = shift;
     my @dirs = @_;
 
-    if ( !@dirs && !$args->{'no-automount'} ) {
-        return $joot->automount();
-    }
-
     # if user passes in /.//foo and /foo/bar we need to
     # mount /foo then /foo/bar
     my $mnt = $joot->mount_point();
     foreach my $dir ( sort map { Cwd::abs_path($_) } @dirs ) {
+        mkpath("$mnt/$dir");
         my $target = Cwd::abs_path("$mnt/$dir");
 
         if ( is_mounted($target) ) {
@@ -33,51 +29,12 @@ sub mount {
             next;
         }
 
-        mkpath($target);
         run( bin('mount'), '--bind', $dir, $target );
 
         # can't bind mount readonly in one mount command
         # see http://lwn.net/Articles/281157/
         if ( $args->{'read-only'} ) {
             run( bin('mount'), '-o', 'remount,ro', $target );
-        }
-    }
-
-    return;
-}
-
-# unmount specified dirs or everything if no dirs passed in
-sub umount {
-    my $joot = shift;
-    my $args = shift;
-    my @dirs = @_;
-
-    my $mnt = Cwd::abs_path( $joot->mount_point() );
-
-    # if the joot itself isn't mounted, there can't be anything mounted under it
-    if ( !is_mounted($mnt) ) {
-        DEBUG "joot isn't mounted, nothing to do";
-        return;
-    }
-
-    if ( !@dirs ) {
-        DEBUG "unmounting mounted dirs for this joot";
-        foreach my $dir ( grep {/^$mnt/x} get_mounts() ) {
-            run( bin("umount"), $dir );
-        }
-
-        return;
-    }
-
-    # if user passes in /.//foo and /foo/bar we need to
-    # umount /foo/bar then /foo
-    foreach my $dir ( reverse sort map { Cwd::abs_path($_) } @dirs ) {
-        my $target = Cwd::abs_path("$mnt/$dir");
-        if ( is_mounted($target) ) {
-            run( bin("umount"), $target );
-        }
-        else {
-            DEBUG "$dir isn't mounted in " . $joot->name();
         }
     }
 
