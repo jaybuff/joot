@@ -84,7 +84,7 @@ sub chroot {    ## no critic qw(Subroutines::ProhibitBuiltinHomonyms Subroutines
             push @to_chown, $ENV{SSH_AUTH_SOCK};    # relative to the chroot
             1;
         } or do {
-            WARN "Failed to proxy ssh socket: $@";
+            WARN "Failed to proxy ssh auth socket: $@";
         };
     }
 
