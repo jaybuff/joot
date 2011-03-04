@@ -138,7 +138,9 @@ sub chroot {    ## no critic qw(Subroutines::ProhibitBuiltinHomonyms Subroutines
     $ENV{HOME} = $homedir;
 
     my $exec_cmd = sub {
-        drop_root($user);
+        if ( $user ne "root" ) { 
+            drop_root($user);
+        }
 
         # the user may have passed in this command to run instead of their shell
         if ( my $cmd = $args->{cmd} ) {

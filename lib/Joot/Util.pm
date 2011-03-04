@@ -204,17 +204,20 @@ sub sudo {
 sub drop_root {
     my $user = shift;
 
+    if ( $user eq "root" ) {
+        die "drop_root must be given a user other than 'root' to switch to\n";
+    }
+
     my ( $uid, $gid ) = ( getpwnam($user) )[ 2, 3 ];
-    die "Failed to getpwname( $user ): $OS_ERROR\n" if $OS_ERROR;
+    if ( !defined $uid ) {
+        die "Failed to getpwnam( $user ): $OS_ERROR\n";
+    }
 
     $EFFECTIVE_GROUP_ID = join( " ", $gid, get_gids($user) );
-    die "Failed to set effective gid: $OS_ERROR\n" if $OS_ERROR;
-
     $REAL_GROUP_ID = $gid;
-    die "Failed to set real gid: $OS_ERROR\n" if $OS_ERROR;
 
-    ( $REAL_USER_ID, $EFFECTIVE_USER_ID ) = ( $uid, $uid );
-    die "Failed to setuid: $OS_ERROR\n" if $OS_ERROR;
+    $EFFECTIVE_USER_ID = $uid;
+    $REAL_USER_ID = $uid;
 
     return;
 }
@@ -224,7 +227,6 @@ sub drop_root {
 
     sub get_gids {
         my $user = shift;
-        DEBUG("getting all gids for $user");
 
         if ( !%gids ) {
             setgrent();    # rewind the list
@@ -236,7 +238,7 @@ sub drop_root {
         }
 
         my $gid = ( getpwnam($user) )[3];
-        die "Failed to getpwnam: $OS_ERROR\n" if $OS_ERROR;
+        die "Failed to getpwnam: $OS_ERROR\n" if !$gid;
 
         if ( $gids{$user} ) {
             return ( $gid, @{ $gids{$user} } );
@@ -250,8 +252,8 @@ sub drop_root {
 # warning: the caller is responsible for dealing with the the child (either
 # kill it or waitpid)
 sub proxy_socket {
-    my $src   = shift;
-    my $dest  = shift;
+    my $src  = shift;
+    my $dest = shift;
 
     my $dir = ( File::Spec->splitpath($dest) )[1];
     mkpath($dir);
