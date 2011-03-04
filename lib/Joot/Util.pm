@@ -85,12 +85,24 @@ sub get_ua {
 sub get_mounts {
     my @mounts;
 
-    # lines from /proc/mount look like this:
-    # /dev/sdh1 /home/jaybuff/joot/joots/foo/mnt/home/jaybuff ext3 rw,relatime,errors=continue,data=writeback 0 0
-    my $mounts = slurp("/proc/mounts");
-    foreach my $line ( split "\n", $mounts ) {
-        my ($target) = ( split /\s+/x, $line, 3 )[1];
-        push @mounts, Cwd::abs_path($target);
+    # /proc mounts is probably the best place to get mount info, but only exists on linux
+    if ( -f "/proc/mounts" ) {
+        # lines from /proc/mount look like this:
+        # /dev/sdh1 /home/jaybuff/joot/joots/foo/mnt/home/jaybuff ext3 rw,relatime,errors=continue,data=writeback 0 0
+        my $mounts = slurp("/proc/mounts");
+        foreach my $line ( split "\n", $mounts ) {
+            my ($target) = ( split /\s+/x, $line, 3 )[1];
+            push @mounts, Cwd::abs_path($target);
+        }
+    } else {
+        # lines look like this:
+        # /dev/disk0s2                             311909984 259128016  52269968    84%    /
+        my $df_out = run( bin( 'df' ), "-a" );
+        foreach my $line ( split "\n", $df_out ) {
+            next if $line =~ /^Filesystem/; # skip the headers
+            my ($target) = ( split /\s+/x, $line )[-1];
+            push @mounts, Cwd::abs_path($target);
+        }
     }
 
     return reverse sort @mounts;
