@@ -121,7 +121,12 @@ sub chroot {    ## no critic qw(Subroutines::ProhibitBuiltinHomonyms Subroutines
         WARN "${user}'s home dir in chroot is different than home dir outside of chroot.";
         WARN "Mounted home dir in $real_homedir, but chdir'ing to $homedir";
     }
-    chdir($homedir) or die "Failed to chdir $homedir: $OS_ERROR\n";
+    chdir($homedir) or do {
+        WARN "Failed to chdir $homedir: $OS_ERROR\n";
+        FATAL "home directory '$homedir' doesn't exist inside joot '$joot_name'";
+        FATAL "Try running \"$PROGRAM_NAME $joot_name --user root --cmd 'mkdir -p $homedir'\" to create it";
+        die "\n";
+    };
 
     # clean up %ENV
     # set this env var so the user has a way to tell what joot they're in
