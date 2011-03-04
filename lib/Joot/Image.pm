@@ -3,8 +3,8 @@ package Joot::Image;
 use strict;
 use warnings;
 
-use Carp 'croak';
-use Cwd ();
+use Cwd        ();
+use File::Copy ();
 use Log::Log4perl ':easy';
 use LWP::UserAgent ();
 use Joot::Util qw( run bin );
@@ -35,7 +35,23 @@ sub download {
 
     my $file      = $self->path("save_ext");
     my $image_url = $self->url();
-    DEBUG "saving $image_url to $file";
+
+    # handle local files specially
+    if ( $image_url =~ m#^file://(.*)# ) {
+        my $path = $1;
+        if ( $self->compressed() ) {
+            INFO "$image_url is local, copying (and uncompressing) rather than downloading";
+            File::Copy::copy( $path, $file );
+            $self->uncompress();
+        }
+        else {
+            INFO "$image_url is local, creating symlink rather than downloading";
+            link $path, $file;
+        }
+
+        $self->{cached} = 1;
+        return;
+    }
 
     my $ua = Joot::Util::get_ua();
 
@@ -51,18 +67,36 @@ sub download {
     my $response = $ua->get( $url, ":content_file" => $file );
 
     if ( !$response->is_success ) {
-        croak $response->status_line;
+        die $response->status_line;
     }
 
-    # uncompressed if necessary
-    if ( $image_url =~ /\.bz2$/xi ) {
+    $self->uncompress();
+
+    $self->{cached} = 1;
+    return;
+}
+
+sub uncompress {
+    my $self = shift;
+
+    my $file = $self->path("save_ext");
+    if ( $file =~ /\.bz2$/xi ) {
         run( bin('bunzip2'), $file );
     }
-    elsif ( $image_url =~ /\.gz$/xi ) {
+    elsif ( $file =~ /\.gz$/xi ) {
         run( bin('gunzip'), $file );
     }
 
-    $self->{cached} = 1;
+    return;
+}
+
+sub compressed {
+    my $self = shift;
+
+    if ( $self->url() =~ /\.(bz2|gz)$/xi ) {
+        return 1;
+    }
+
     return;
 }
 
@@ -71,11 +105,11 @@ sub name {
 
     my $url = $self->{url};
     my $name;
-    if ( $url =~ m#.*/(.*)\.qcow2?(\.(bz2|gz))?$#xi ) {
+    if ( $url =~ m#.*/(.*)\.(qcow2?|sparseimage)(\.(bz2|gz))?$#xi ) {
         $name = $1;
     }
     else {
-        croak "failed to convert $url to a name\n";
+        die "failed to convert $url to a name\n";
     }
 
     return $name;
@@ -87,13 +121,13 @@ sub path {
     my $self     = shift;
     my $save_ext = shift;    # by default we wont save the extension
 
-    my $url = $self->{url};
+    my $url = $self->url();
     my $file;
     if ( $url =~ m#.*/(.*)#x ) {
         $file = $1;
     }
     else {
-        croak "failed to convert $url to a file\n";
+        die "failed to convert $url to a file\n";
     }
 
     # we'll remove the .bz2 or .gz when we uncompress it
