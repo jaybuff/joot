@@ -1,13 +1,3 @@
-package Joot::Plugin::Users;
-
-use strict;
-use warnings;
-
-use Log::Log4perl qw(:easy);
-use Carp;
-
-# confirm the user has an account in the joot
-# if the user does not, create it
 package Joot::Plugin::SudoUsers;
 
 use strict;
@@ -25,6 +15,7 @@ sub post_create {
     my $sudoers_file = $joot->mount_point() . "/etc/sudoers";
     if ( !-e $sudoers_file ) {
         # handle the case where sudo isn't installed in the root
+        WARN "No /etc/sudoers file inside the joot.  Not giving user(s) sudo access (sudo isn't installed?)";
         return;
     }
 
