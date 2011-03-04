@@ -4,7 +4,6 @@ use strict;
 use warnings;
 
 use Log::Log4perl qw(:easy);
-use Carp;
 
 # confirm the user has an account in the joot
 # if the user does not, create it
