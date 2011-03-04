@@ -342,16 +342,13 @@ sub create {
         image     => $image->config(),
         creator   => $ENV{SUDO_USER} || $ENV{USER},
         ctime     => time(),
-        automount => {
-            "/proc" => {},
-            "/sys"  => {},
-            "/dev"  => {},
-        }
     };
 
     # not all systems use /dev/pts, so only add it if this system does
-    if ( -e '/dev/pts' ) {
-        $conf->{automount}->{'/dev/pts'} = {};
+    foreach my $autodir ( qw( /proc /sys /dev /dev/pts ) ) { 
+        if ( -e $autodir ) {
+            $conf->{automount}->{$autodir} = {};
+        }
     }
 
     $self->set_config($conf);
