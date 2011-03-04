@@ -409,7 +409,7 @@ sub images {
             1;
         } or do {
             WARN "Failed getting images from $url";
-            DEBUG $EVAL_ERROR;
+            WARN $EVAL_ERROR;
           }
     }
 
