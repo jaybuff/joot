@@ -270,7 +270,7 @@ sub mount_point {
     my $self = shift;
 
     my $joot_dir = $self->joot_dir();
-    return "$joot_dir/mnt";
+    return Cwd::abs_path( "$joot_dir/mnt" );
 }
 
 # unmount specified dirs or everything if no dirs passed in

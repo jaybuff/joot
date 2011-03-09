@@ -1,6 +1,6 @@
 package Joot::Plugin::MacOSX;
 
-use Joot::Util qw( bin run mkpath is_mounted );
+use Joot::Util qw( bin run mkpath is_mounted get_mounts );
 use Log::Log4perl qw(:easy);
 
 sub mount {
@@ -9,12 +9,12 @@ sub mount {
     my @dirs = @_;
 
     my $image = Joot::Image->new( $joot->get_config()->{image}->{url} );
-    my $mnt = $joot->mount_point();
+    my $mnt   = $joot->mount_point();
 
     # only mount if not mounted
-    if ( !is_mounted( $mnt ) ) {
-        my $out = run( bin('hdiutil'), qw(attach -owners on -nobrowse -nomount -shadow), disk( $joot ), $image->path() );
-        my ($device) = ($out =~ m#^(/dev/disk\d+)#);
+    if ( !is_mounted($mnt) ) {
+        my $out = run( bin('hdiutil'), qw(attach -owners on -nobrowse -nomount -shadow), disk($joot), $image->path() );
+        my ($device) = ( $out =~ m#^(/dev/disk\d+)# );
 
         DEBUG "matched device $device";
 
@@ -23,14 +23,35 @@ sub mount {
         $device .= "s2";
 
         # hdiutil detach deletes $mnt for some annoying reason
-        mkpath( $mnt );
+        mkpath($mnt);
         run( bin('mount'), qw(-o nodev -t hfs), $device, $mnt );
 
         # mount the /dev fs
-        run( bin('mount'), qw(-t devfs devfs), "$mnt/dev" ); 
+        run( bin('mount'), qw(-t devfs devfs), "$mnt/dev" );
 
         # mount the file-descriptor file system (stdin, stdout, tty, etc)
-        run( bin('mount'), qw(-t fdesc -o union stdin), "$mnt/dev" ); 
+        run( bin('mount'), qw(-t fdesc -o union stdin), "$mnt/dev" );
+    }
+
+    return;
+}
+
+sub pre_umount {
+    my $joot = shift;
+    my $args = shift;
+    my @dirs = @_;
+
+    if ( !@dirs ) {
+        DEBUG "unmounting all mounted dirs for this mac os x joot";
+        my $mnt = $joot->mount_point();
+        foreach my $dir ( grep {/^$mnt/x} get_mounts() ) {
+            # we'll use hdiutil detach to umount $mnt
+            next if ( $dir eq $mnt );
+
+            run( bin("umount"), $dir );
+        }
+
+        run( bin('hdiutil'), 'detach', $mnt );
     }
 
     return;
