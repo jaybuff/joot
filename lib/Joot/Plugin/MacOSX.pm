@@ -13,7 +13,20 @@ sub mount {
 
     # only mount if not mounted
     if ( !is_mounted( $mnt ) ) {
-        run( bin('hdiutil'), qw(attach -owners on -nobrowse -mountpoint), $mnt, '-shadow', disk( $joot ), $image->path() );
+        my $out = run( bin('hdiutil'), qw(attach -owners on -nobrowse -nomount -shadow), disk( $joot ), $image->path() );
+        my ($device) = ($out =~ m#^(/dev/disk\d+)#);
+
+        DEBUG "matched device $device";
+
+        # TODO put this partition in the config for the image
+        # for now this is okay, because all images built in the standard way use the second part
+        $device .= "s2";
+
+        # hdiutil detach deletes $mnt for some annoying reason
+        mkpath( $mnt );
+        run( bin('mount'), qw(-o nodev -t hfs), $device, $mnt );
+
+        # mount the /dev fs
         run( bin('mount'), qw(-t devfs devfs), "$mnt/dev" ); 
 
         # mount the file-descriptor file system (stdin, stdout, tty, etc)
