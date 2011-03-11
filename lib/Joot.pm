@@ -470,7 +470,7 @@ sub delete {    ## no critic qw(Subroutines::ProhibitBuiltinHomonyms Subroutines
     eval { $self->umount(); };
 
     my $mnt = $self->mount_point();
-    if ( scalar glob("$mnt/*") ) {
+    if ( $mnt && scalar glob("$mnt/*") ) {
         die "$mnt is not empty.  Perhaps joot couldn't be unmounted?\n";
     }
 
